@@ -1,56 +1,57 @@
 ; Set date at welcome_str:
 ;**********************************************************
-;    MicroFinder Doppler DF Set
-;    Hardware and software upgrade by Rich Harrington, KN6FW
+;    MicroFinder Doppler DF Set 
+;    Hardware design and software upgrade by Rich Harrington, KN6FW
 ;    Original software by Michael J. Allison, KN6ZT
 ;**********************************************************
 ;
-;	.data.w h'5770
-;			
 ;       TO FIND THINGS
-;                                      
-;	@@write_buffered_char:
-;	@@write_word:(r1)				gps_speed_flag               
-;	@GPS_capture_flag                       	Init_stuff:                  
-;	@gps_heading                            	inp_process:                 
-;	bt_attract:                             	low_speed_GPS:
-;							LED_8_table:
-;							LED_do_slow:
-;							Parse_GPS:               
-;	Button Function Desription Strings      	p_calibrate:                 
-;	button_calibrate:                       	p_dial_out:                  
-;	button_config:                          	P_lcd:                       
-;	button_rot:                             	p_led_ring_display:	     
-;	calibration					p_serial_in:                 
-;	cli_cmd_table:                          	p_serial_output2:            
-;	cmd_baud_show_19:                       	p_stepper_driver:            
-;	cmd_eedump:                             	raw_store:
-;	cmd_opt:                   
-;	cmd_set_calv:               			read_dec_word:
-;	cmd_stepto:                             	read_word:                   
-;	current_rotation_rate                   	rotation_table:              
-;	degrees_convert:                        	rt_sec_uart_turn_on          
-;	degrees_write_s0:(r1)                   	Second serial port
-;							serin_process2:           
-;	doppler_qual_0T9                        	set_rotation_rate:           
-;	eeprom_read:                            	snooper_qlevel
-;	No_print:					strcmp:
-;	eeprom_restore:                         	timing_test                  
-;	filt_0_output:                          	util_get_calibration_config: 
-;	filt_1:                                 	write_buffered_char2:        
-;	filt_3:                                 	write_buffered_char_add:(r1l)
-;	get_config_ptr:(r0l in - r0 out)        	write_dec_word_add:(r1)      
 ;
-;	Things to fix
-;		Compass bearing correct of held otr
+;	@@write_buffered_char:			inp_process:
+;	@@write_word:(r1)			low_speed_GPS:
+;	@GPS_capture_flag                       LED_8_table:
+;	@gps_heading				LED_do_slow:
+;	bt_attract:                             main_play_not_so_good_tone:
+;	Button Function Desription Strings	Parse_GPS:
+;	button_calibrate:			p_calibrate:
+;	button_config:				p_dial_out:
+;	button_ledf:				P_lcd:
+;	button_rot:				p_led_ring_do_display:
+;	calibration				p_led_ring_display:
+;	cli_cmd_table:				p_serial_in:
+;	cmd_baud_show_19:			p_serial_output2:
+;	cmd_eedump:				p_stepper_driver:
+;	cmd_eeprom_restore:			raw_store:
+;	cmd_opt:				read_dec_word:
+;	cmd_set_calv:				read_word:
+;	cmd_stepto:				rotation_table:
+;	current_rotation_rate			rt_sec_uart_turn_on
+;	degrees_convert:			Second serial port
+;	degrees_write_s0:(r1)			send DD-Q
+;	doppler_qual_0T9			serin_process2:
+;	eeprom_read:				set_rotation_rate:
+;	No_print:				snooper_qlevel
+;	eeprom_restore:                 	strcmp:
+;	filt_0_output:                  	timing_test
+;	filt_1:					util_get_calibration_config:
+;	filt_3:					write_buffered_char2:
+;	get_config_ptr:(r0l in - r0 out)	write_buffered_char_add:(r1l)
+;	gps_speed_flag        			write_dec_word_add:(r1)
+;	Init_stuff:
 ;
-;       Things to think about
-;		6 dB gain @ 200 Hz to 0 dB @ 534 Hz
+;	Things to Fix or Do
+;
+;	Next time disable port to turn off all LED outputs
+;	Next time DD 99 or 100 to front. It makes filters easier.
+;	Layout with one led at 0 degrees also makes 45 degrees one LED.
+;
+;	.data.w h'5770
+;
 ;	Filter
 ;	Average with point within + or - 50 DD
 ;	LED speed control
 ;		if Q GT 4 then right now
-;		as Q ranges from 1 to 4 
+;		as Q ranges from 1 to 4
 ;		change speed.
 ;		Keep the lower timer value value
 ;
@@ -71,24 +72,24 @@
 ;		Send relitive bearing Q
 ;
 ;                mov.w   #h'7ff7,r1      ; By rjh turns on extra pin
-                                         ; on the Hitachi board     
+                                         ; on the Hitachi board
 ;                bset    #6, @r1         ; the time the led is on
 ;
 ;		mov.b	r1l,@port3_dr
 ;		bclr	#7,@port_6		; display on hex test
-;		bset	#7,@port_6                                          
-;                                        
+;		bset	#7,@port_6
+;
 ;**********************************************************
 ;       Assembly        flags
 ;**********************************************************
-
+;
 ;       Set this value to 1 for development, 0 to production.
 DEVELOP_ASM                     .EQU    0
 ;       Set to 1 if you are KN6FW else 0
 KN6FW                           .equ    1
 ;       Set to 1 if debug else 0
 DEBUG_FLAG                      .equ    1
-
+;
 ;       ---------------------------------------------------
 ;       (c) Copyright 1993-2012 AHHA! Solutions
 ;       All Rights Reserved
@@ -150,13 +151,13 @@ DEBUG_FLAG                      .equ    1
 ;               - Added GPS statement
 ;               - Add GPS sentence capture code to serin process
 ;               - Capture compass from GPS stream
-
+;
 ;       4/7/1999 X7
 ;               - Fix BSWT to prohibit switching if the compass produces
 ;                 an error.
 ;               - Add config command, antenna config support
 ;               - Add antenna check routines
-
+;
 ;       6/18/1999 FC1
 ;               - Add option A to turn on / off antenna checker
 ;               - Fix a bug on the PTT hold feature
@@ -164,17 +165,17 @@ DEBUG_FLAG                      .equ    1
 ;               - Fix rate display on seven segment display
 ;               - Make sure at least one configuration is enabled and active
 ;                 if the system is started with no flash memory.
-
+;
 ;       7/16/1999 FC2
 ;               - Fix some issues that showed up with FC1
 ;               - Read word and byte are limited to too small of
 ;                 a RAM area (for the new chip, H8/338)
 ;               - Fix the hardware sense bit to use new pullup
 ;                 controller in the H8/338.
-
+;
 ;       8/15/1999 FC4
 ;               - Fix a bug with double stepping the LED.
-
+;
 ;       2.0.1
 ;       10/10/1999 Patch & bugfix
 ;               - Fix a bug where GPS streaming does not save properly.
@@ -578,31 +579,26 @@ LED_DELAY_SLOW:                 .EQU     48	; L0, L4
 LED_DELAY_MED:                  .EQU     16	; L1, L5
 LED_DELAY_FAST:                 .EQU     8	; L2, L6
 LED_DELAY_INSTANT:              .EQU     0	; L3
-
-
-
-
+;
 LED_DELAY_INIT:                 .EQU     LED_DELAY_INSTANT
-
-
-
+;
 LAST_ROT:                       .equ    9
-
+;
 ;       Sounder timer
 ;       Produce square wave from timer
 
 timer_1_tcr_val:                .EQU     h'0a   ;  phi/64 compare and clear on A
 timer_1_tcr_off:                .EQU     h'00   ;  turn off the timer/sounder
 timer_1_tcsr_val:               .EQU     h'03   ;  toggle the output
-
+;
 ;       Sounder frequencies
-
-sounder_500hz:                  .EQU     h'7f
-sounder_1000hz:                 .EQU     h'3f
-sounder_1500hz:                 .EQU     h'2a
-sounder_2000hz:                 .EQU     h'1f
-sounder_2500hz:                 .EQU     h'0c
-
+;
+;sounder_500hz:                  .EQU     h'7f
+;sounder_1000hz:                 .EQU     h'3f
+;sounder_1500hz:                 .EQU     h'2a
+;sounder_2000hz:                 .EQU     h'1f
+;sounder_2500hz:                 .EQU     h'0c
+;
 ;       Gives Various rates with the 16 Mhz clock
 ;       Clock is phi = crystal/2
 ;       Phi is / 2
@@ -612,18 +608,15 @@ sounder_2500hz:                 .EQU     h'0c
 ;       16 MHz / 2 = 8 MHz / 2 = 4 Mhz
 ;       4 MHZ / ( 23 + 1 ) = 167 kHZ / 2 = 83.5 kHz or 417.5 Hz
 ;       Clock for filter ( Rotation rate ) 200 times rotation rate
-
-
+;
 timer_16b_tcr_val:              .EQU    h'0f
-
 timer_16b_ocrs_val:             .EQU    h'00
 timer_16b_ocrs_final:           .EQU    h'10
-
 timer_16b_icra:                 .EQU    h'ff98
-
+;
 ;       Make us reset on compare values
 timer_16b_crs_val:              .EQU    h'ff
-
+;
 ;       Timer Interupt Enable values
 timer_interrupt_val:            .EQU    h'04
 
@@ -940,10 +933,10 @@ write_byte:
 ;----------------------------------------------------------
 
 ;       SERIAL NUMBER: Each CPU burned will contain a unique serial number.
-;       Each number is stored as 4 digit Hex.
+;       Each number is stored as 4 digit BCD.
 ;       Place serial_number at end of line.  Easier to edit
 
-serial_number:  .data.w h'F002
+serial_number:  .data.w h'F001
 
 ; -------------------------------------------------------------------------
 
@@ -1147,13 +1140,13 @@ Init_stuff:
 ;		
 ;       Set up for 4800 baud @ 19.6608 MHz (page 194, table 9-3)
 ;
-                mov.b   #BIT_RATE_4800,r0l                     
+                mov.b   #BIT_RATE_4800,r0l
                 mov.b   r0l,@s0_bit_rate_reg
                 mov.b   r0l,@serial_rate
                 mov.b   #00,r0l				; serial_mode_val
                 mov.b   r0l,@s0_serial_mode_reg
                 mov.b   #h'30,r0l
-                mov.b   r0l,@s0_serial_cntrl                
+                mov.b   r0l,@s0_serial_cntrl
 ;
 ;       Set up for 4800 baud @ 19.6608 MHz (page 194, table 9-3)
 ;
@@ -1161,9 +1154,9 @@ Init_stuff:
                 mov.b   r0l,@s1_bit_rate_reg
                 mov.b	r0l,@serial_rate1
                 mov.b   #00,r0l				; serial_mode_val
-                mov.b   r0l,@s1_serial_mode_reg
+                mov.b   r0l,@s1_serial_mode_reg		; 8 bit Data
                 mov.b   #h'30,r0l
-                mov.b   r0l,@s1_serial_cntrl                
+                mov.b   r0l,@s1_serial_cntrl
 ;
 init_data:
 
@@ -1240,33 +1233,31 @@ hdw_version_save:
                 mov.b	#0,r0l
                 mov.b	r0l,@doppler_qual_fundx
 
-                mov.w   #output_buffer,r0                
+                mov.w   #output_buffer,r0
                 mov.w   r0,@output_buffer_Out_ptr
                 mov.w   r0,@output_buffer_in_ptr
 ;
-                mov.w   #output_buffer2,r0                
+                mov.w   #output_buffer2,r0
                 mov.w   r0,@output_buffer2_out_ptr
                 mov.w   r0,@output_buffer2_in_ptr
 ;
 		mov.w	#Input_buffer2,r0
 		mov.w	R0,@Input_buffer2_ptr		; setup 4 first string
 ;
-		mov.b 	#0,r0l
-		mov.b	r0l,@GPS_echo_flag		                                
-                
-;       start real time clock                
+		mov.b 	#0,r0l				; False
+		mov.b	r0l,@GPS_echo_flag
+;
+;       start real time clock
                 mov.b   #PWM1_start,r1l
-                mov.b   r1l,@PWM1_tcr                
-                
+                mov.b   r1l,@PWM1_tcr
+;
 ;       Initialize data for attract mode, should it ever be used.
-
-
+;
                 mov.b   #1,r0l
                 mov.b   r0l,@led_dir
 
                 mov.b   #h'ff,r0l
                 mov.b   r0l,@led_ddr
-
 
 ;       Init the LED output pins
                 mov.w   #led_delay_initlower,r0
@@ -1281,7 +1272,7 @@ hdw_version_save:
                 mov.w   #filt_0_output,r1         ; address of first filter
                                                   ; filter output data address
                 mov.w   #data_4_leds,r0
-                mov.w   r1,@r0                
+                mov.w   r1,@r0
 
 ;       Snoop starts within 1 second of the system starts keeping time.
 
@@ -1336,7 +1327,7 @@ hdw_version_save:
 		mov.w	r1,@r0
 		mov.w	#data_4_lcda,r0
 		mov.w	#filt_0_A_output,r1
-		mov.w	r1,@r0                
+		mov.w	r1,@r0
 
 ;       Port 6 used by timer, and misc input/output
 ;       This port also used for the EEPROM.
@@ -1612,15 +1603,15 @@ init_data_exit:
 ;       End of table mark
 
 process_scheduler_start:                                        ; Idle Loop
-                                                                ; Idle Loop                                                                          
+                                                                ; Idle Loop
                 jsr     p_serial_output                         ; Idle Loop
-		jsr	p_serial_in2				; Idle Loop                
+		jsr	p_serial_in2				; Idle Loop
                 jsr     p_serial_output2                        ; Idle Loop
                                                                 ; Idle Loop
                 mov.w   @rt_clock_sec_change_flag,R1            ; Idle Loop
                 beq     no_sec_change                           ; Idle Loop
                 jsr     rt_clock_change_sec                     ; Idle Loop
-                						; Idle Loop                
+                						; Idle Loop
 no_sec_change:                                                  ; Idle Loop
                 mov.b   @ant_one_flag,r1L                       ; Idle Loop
                 beq     ant_1_exit                              ; Idle Loop
@@ -1734,9 +1725,8 @@ fence_process_start:
 ;	    _____________________________ |_____________ |_____
 ;	D0-7_____________________________X__valid_______X______  P30
 ;
-				; nz = busy				
+				; nz = busy
 ;
-	
 ;
 ;	At 19.6608 crystal T state = 100 nS typical instruction = 200 nS
 ;       
@@ -1823,7 +1813,6 @@ place_led_ar:
 ;			  r1l =    1s
 ;			  r1h = 1/10s
 ;
-                						                                
 ;
                 mov.w   @data_4_lcdr,r0		; get address to data
                 mov.w   @r0,r1                  ; get data
@@ -1862,7 +1851,7 @@ lcd_instruction:				; it's special
 		mov.b	@r1,r0l			; first entry is a command
 		adds	#1,r1
 		mov.w	r1,@lcd_pointer
-;		
+;
 ;	Instruction write
 lcd_inst_load:				; Input r0l
 		cmp.b	#h'80,r0l
@@ -1912,16 +1901,16 @@ p_serial_in:
 							; cancel the line 
 							; & start over
 							; Clear recv ready bit
-;							                
+;
 				; btst 4   #RX_FRAME_ERR_BV,@s0_serial_status_reg
 				; btst 3   #RX_PARITY_ERR_BV,@s0_serial_status_reg
 				; btst 5   #RX_OVERRUN_BV,@s0_serial_status_reg
-                
+;
 		bclr #5,@s0_serial_status_reg   	; #RX_OVERRUN_BV,@s0_serial_status_reg
 		bclr #4,@s0_serial_status_reg   	; #RX_FRAME_ERR_BV,@s0_serial_status_reg
 		bclr #3,@s0_serial_status_reg   	; #RX_PARITY_ERR_BV,@s0_serial_status_reg
 		bclr #6,@s0_serial_status_reg   	; #rx_ready_bit,@s0_serial_status_reg
-                                                          
+;
                 mov.b   #0,r0l
                 mov.b   r0l,@inp_len
 serin_no_err_exit:
@@ -1946,16 +1935,7 @@ serin_process:
                 mov.b   @s0_recv_data,r2l		; get char
                 and     #h'7f,r2l			; remove parity
                 bclr    #rx_ready_bit,@s0_serial_status_reg	; reset
-;		cmp.b   #'$',r2l
-;		bne	not_dollar_sign
-;		mov.b   #1,r3L				; set GPS capture flag
-;		mov.b   r3L,@GPS_capture_flag
-;		push	r0
-;		mov.w	#10,r0
-;		mov.w	r0,@rt_sec_gps			; keep gps compass
-;		pop	r0
-                
-not_dollar_sign:		
+;
 ;       Special check to see if the user pressed the delete key.
 		
                 cmp.b   #ASCI_DEL,r2l
@@ -1995,7 +1975,7 @@ serin_insert:
 ;       if trying to redo and empty command, never mind.
                 mov.b   @r1,r2l
                 beq     serin_no_command_to_redo
-                jsr     @@write_buffered_str
+                jsr     @@write_buffered_str		; What srting?
                 jmp     inp_parse_and_execute
 ;
 serin_no_command_to_redo:
@@ -2005,9 +1985,11 @@ serin_check_other_specials:
 
 ;       if   c = CR
                 cmp.b   #CR,r2l
-                bne     p_serial_check_lf
-                jmp     inp_process
-
+;		bne     p_serial_check_lf
+		beq	inp_process
+;
+;	Place for eep restore		
+;
 ;       else c = LF; eat the LF, don't do anything with them.
 p_serial_check_lf:
                 cmp.b   #LF,r2l
@@ -2025,7 +2007,7 @@ p_serial_GPS_test:
 ;----------------------------------------------------------
 ;
 ;                mov.b   #1,r3L				; set GPS capture flag
-;                mov.b   r3L,@GPS_capture_flag                
+;                mov.b   r3L,@GPS_capture_flag
 ;
 ;----------------------------------------------------------
 ;       else if c = ASCI_CANCEL
@@ -2334,40 +2316,35 @@ read_word_abort:
 
 ;       Take a character 0-9,A-F and turn to a hex nibble
 ;       Return in r0l (character pointed to by r2)
-;       Set zero bit if number is OK, else clear bit. Use as:
-
-;       jsr     make_hex
-;       bne     exception_recovery
-
+;       Set zero bit if number is OK, else clear bit.
+;
 make_hex:       mov.b   @r2,r0l
                 cmp.b   #  '0'  ,r0l
-                blo     try_hex_2
+                blo     make_hex_fail
                 cmp.b   #  '9'  ,r0l
                 bhi     try_hex_2
                 mov.b   #  '0'  ,r0h
-                sub.b   r0h,r0l
-                mov.b   #0,r0h                          ; set zero bit too.
-                rts
-
+                bra	good_hex
+;                
 ;       Look for range A-F, first clear lower case bit for a-f.
-
+;
 try_hex_2:
-                and     #h'df,r0l
+                bclr	#5,r0l		; Uper case
                 cmp.b   #  'A' ,r0l
                 blo     make_hex_fail
-                cmp.b   #  'f' ,r0l
+                cmp.b   #  'F' ,r0l
                 bhi     make_hex_fail
                 mov.b   #A_F_SUB,r0h
+good_hex:               
                 sub.b   r0h,r0l
-                mov.b   #0,r0h                          ; set zero bit too.
+                mov.b   #0,r0h		; set zero bit too.
                 rts
-
-;       Whoops
+;
 make_hex_fail:
                 mov.w   #bad_hex,r1
                 jsr     @@write_buffered_str
-                andc    #h'fb,ccr                               ; clear zero flag
-                rts                                     ; ERROR ret
+                andc    #h'fb,ccr	; clear zero flag
+                rts			; ERROR ret
 
 ;       Write Byte (in r1l)
 
@@ -2650,7 +2627,7 @@ write_binary_byte_test:
 		rts
 ;
 ; ---------------------------------------------------------
-;		
+;
 ;       Write decimal 16 bit value contained in r1
 write_dec_word_add:
                 push    r2
@@ -2748,7 +2725,7 @@ write_buffered_char_add:
 ;		| ________________
 ;		|/                 \
 ;	inptr = outptr?            |
-;       no		yes        | 
+;       no		yes        |
 ;	|		|          |
 ;	|           Wait for space |
 ;       |               \__________/
@@ -2864,7 +2841,7 @@ write_buffered_char2:
 write_buffered_Place_ch2:
 		push	r2
 		push	r1
-		mov.w   @output_buffer2_in_ptr,r2		                              
+		mov.w   @output_buffer2_in_ptr,r2
                 mov.b   r1l,@r2					; Place new data
                 adds    #1,r2					; inc in ptr
                 mov.w   R2,@output_buffer2_in_ptr		; save new in ptr
@@ -2933,7 +2910,7 @@ p_serial_in2:
 		
 		mov.b	@s1_serial_status_reg,r0l
 		btst    #rx_ready_bit,r0l
-                bne     serin_process2							
+                bne     serin_process2
 ;
 ;		mov.b	@s1_serial_status_reg,r0l
 ;                btst    #4,r0l				; framing error
@@ -3141,9 +3118,74 @@ serin_no_rollover:
 ;
 ; ---------------------------------------------------------
 p_serial_output2:
+;
+;	Check Opt -G if False send Bearing info in 1 byte DD
+;	If the UART is ready to send
+;	Send Q when it changes.  
+;	Format h'fQ. The value of DD will not reach h'f0
+;		Note DD = Doppler Degrees 0 to 199
+;		          Hardware limit
+;     ELSE
+;	Echo GPS string + decimal Bearing and Q
 
 ;       Only going to send characters if there any to send
 ;       and the output uart is ready.
+;
+;     If send DD-Q
+;
+;	Qcount = 0
+;	Yes	No
+;	|	|
+;	|	|
+;	|	Q = LastQ ----
+;	|	No	      Yes
+;	| 	|		|
+;	|	| 		|
+;	|    Qcount = 1 	|
+;	|    No	      Yes	|
+;	|    |		|	|
+;	|    |		|	|
+;	Send Q		| ______/
+;	|	  	|/
+;	Qcount=0	Send DD
+; 	\______________ |
+;		       \|
+;			inc Qcount
+;
+		mov.b	@GPS_echo_flag,r1l
+		bne	p_serial_output2_G
+		btst    #tx_ready_bit,@s1_serial_status_reg
+                beq     p_serial_out2_exit
+;							; Start of Q or DD
+;							; send logic                
+                mov.b	@Q_count,r2h
+                beq	p_serial_output2_Q		; Yes: Send Q
+                mov.b	@last_sent_Q,r1h
+                mov.b	@doppler_qual_0T9,r1l
+                cmp.b	r1l,r1h				; same?
+                beq	p_serial_output2_Bearing	; Yes
+                cmp.b	#1,r2h				; Qcount = 1?
+                beq	p_serial_output2_Bearing
+                
+p_serial_output2_Q:
+                mov.b	#0,r2h
+                mov.b	r1l,@last_sent_Q
+                or	#h'0f0,r1l			; Format h'FQ
+                bra	p_serial_output2_Byte
+;
+p_serial_output2_Bearing:
+                mov.b	@qsync_bearing,r1l		; DD Bearing
+p_serial_output2_Byte:                
+                mov.b   r1l,@s1_tx_data			; Send it
+;
+;       Take care of ready bit and xmitter data empty
+;
+                bclr    #tx_ready_bit,@s1_serial_status_reg
+                inc	r2h
+                mov.b	r2h,@Q_count
+                rts
+;		
+p_serial_output2_G
 
                 mov.w   @output_buffer2_in_ptr,r1
                 mov.w   @output_buffer2_out_ptr,r0
@@ -3333,7 +3375,7 @@ buttin_done:
 ;       The led_driver should be stopped before this process runs.
 
 p_attractor:
-
+;
 ;       Output the leds
 
                 mov.b   @led_id,r1l
@@ -3444,7 +3486,12 @@ p_led_ring_hold_it:
                 jmp     p_led_ring_done
 
 p_led_ring_do_display:
-
+;
+;	Move filter-Absoulte selection to here
+;	If filter = A then display all Filters in rotating order
+;	Keep in Abslute-Relitive mode
+;	Do the same thing for the pointer
+;	Need a RAM locations for LED-Pointer to keep track of witch filter to use
 
 		mov.w	@data_4_leds,r0		; get address to data
                 mov.w   @r0,r1			; get data
@@ -4073,7 +4120,6 @@ stepper_find_direction:
                 mov.w   #200,r3
                 jsr     util_calc_dir_vector	; r0h  CW = 0 | CCW = 1
 		mov.b	r0h,r0h
-		
 ;
 ; Now have direction to step lets do the step
 ; if CW and the zero bit goes low set @pointer_location to 0
@@ -4088,7 +4134,7 @@ step_ccw:
 ;       underflow, set to max (360 degrees == 399 counts)
                 mov.w   #399,r2
                 bra     stepper_save_location
-
+;
 stepper_subtract_one:
                 subs    #1,r2
 
@@ -4185,15 +4231,14 @@ stepper_single_doit:
 ;	bit  5   7ff7	motor 3
 ;	bit  6   7ff7	nc
 ;	bit  7   7ff7	motor 1
-
-		
+;
                 mov.b   #h'06,r1h
                 and     r1l,r1h         ; r1h = port ffc1 data port
                 and     #h'0f8,r1l      ; r1L = port 7ff7 data emulator
                 bset	#3,r1l		; turn on back-lite always
                 mov.b   r1h,@h'ffc1
                 mov.b   r1L,@h'7ff7
-                
+;
         %ELSE
         	bset	#3,r1l		; turn on back-lite always
                 mov.b  r1l,@h'ffc1
@@ -4210,17 +4255,22 @@ stepper_single_doit:
                  btst	#2,@port_9
                  bne	zero_not		; still a 1
                  				; went to 0
-			                 				
+;
                  mov.w	#0,r0
                  mov.b	r0l,@zero_info_reed_closed
                  				; no longer closed
                  mov.w	r0,@pointer_location
-zero_not:                 
-exit_going_cw:                 
+zero_not:
+exit_going_cw: 
 		rts
-;		
+;
 ; ---------------------------------------------------------
-
+;
+;	If ever you have to work on this routine.
+;	Leave one time slot between LED ring display
+;	Next time disable port to turn off all outputs
+;	Next time DD 99 or 100 to front. It makes filters easier.
+;	Layout with one led at 0 degrees.
 ;       This is another driver process and should never be disabled.
 ;       This driver will multiplex the LED matrix.
 ;       It is responsible for displaying the LED on the ring
@@ -4245,12 +4295,12 @@ p_led_driver:
                 mov.w   @rt_clock_msec,r0
                 and     #h'03,r0l
                 beq     p_led_driver_no_dim
-
+;
 ;       Dim it
                 mov.b   #LED_UNUSED_LOCATION,r0l
                 mov.b   r0l,@led_port
                 rts
-
+;
 p_led_driver_no_dim:
 
                 mov.w   @rt_msec_marquee,r0
@@ -4573,17 +4623,17 @@ p_calibrate_print_regular:
                 jsr     get_config_ptr		; r0l in r0 out
                 				; enabled - cal val not set
                                                 ; 4 ant  - 1 active high   
-                                                ; calibrate rot rate 0     
-		                                ; calibrate rot rate 1     
-                                                ; calibrate rot rate 2     
-                                                ; calibrate rot rate 3     
-                                                ; calibrate rot rate 4     
-                                                ; calibrate rot rate 5     
-                                                ; calibrate rot rate 6     
-                                                ; calibrate rot rate 7     
-                                                ; calibrate rot rate 8     
-                                                ; calibrate rot rate 9     
-                                                ; default rotation rate                
+                                                ; calibrate rot rate 0
+		                                ; calibrate rot rate 1
+                                                ; calibrate rot rate 2
+                                                ; calibrate rot rate 3
+                                                ; calibrate rot rate 4
+                                                ; calibrate rot rate 5
+                                                ; calibrate rot rate 6
+                                                ; calibrate rot rate 7
+                                                ; calibrate rot rate 8
+                                                ; calibrate rot rate 9
+                                                ; default rotation rate
                 adds    #2,r0			; now points to rot 0
 
 		mov.b   @current_rotation_rate,r1l
@@ -4598,16 +4648,14 @@ p_calibrate_print_regular:
 ;		add.b	#56,r2l
 cal_value_ok:		
                 mov.b   r2l,@r1
-
-                                
-
+;
 ;       next rate (add one to r2, which is (rate-1))
                 mov.b   @current_rotation_rate,r2l
                 mov.b   #0,r2h
                 inc     r2L
                 cmp.b   #LAST_ROT + 1,r2l
                 bne     p_calibrate_exit
-
+;
 ;       Done calibrating all of the values
                 mov.b   #0,r0l          	; flag false
                 mov.b   r0l,@ps_calibrate
@@ -5042,7 +5090,7 @@ init_tone:
 
 main_play_the_oh_so_good_tone:
 
-                mov.w   #H'320,r0       ; send a "G"
+                mov.w   #H'31a,r0       ; send a "G"
                 mov.w   r0,@r1
 
                 adds    #2,r1
@@ -5052,7 +5100,7 @@ main_play_the_oh_so_good_tone:
 
                 adds    #2,r1
 
-                mov.w   #H'320,r0       ; 3
+                mov.w   #H'31a,r0       ; 3
                 mov.w   r0,@r1
 
                 adds    #2,r1
@@ -5061,10 +5109,15 @@ main_play_the_oh_so_good_tone:
                 mov.w   r0,@r1
 
                 adds    #2,r1
-                mov.w   #H'120,r0       ; 5
+                mov.w   #H'11a,r0       ; 5
                 mov.w   r0,@r1
+                
+                adds    #2,r1
 
-                mov.b   #5,r0l
+                mov.w   #h'101,r0       ; 6
+                mov.w   r0,@r1                
+
+                mov.b   #6,r0l
                 mov.b   r0l,@sound_length
                 mov.b   #0,r0l
                 mov.b   r0l,@sound_position
@@ -5076,7 +5129,7 @@ main_play_no_tone:
 
 main_play_not_so_good_tone:
 
-                mov.w   #H'140,r0       ; send an "F"
+                mov.w   #H'11b,r0       ; send an "F"
                 mov.w   r0,@r1
 
                 adds    #2,r1
@@ -5086,7 +5139,7 @@ main_play_not_so_good_tone:
 
                 adds    #2,r1
 
-                mov.w   #H'140,r0       ; 3
+                mov.w   #H'11b,r0       ; 3
                 mov.w   r0,@r1
 
                 adds    #2,r1
@@ -5096,7 +5149,7 @@ main_play_not_so_good_tone:
 
                 adds    #2,r1
 
-                mov.w   #H'340,r0       ; 5
+                mov.w   #H'31b,r0       ; 5
                 mov.w   r0,@r1
 
                 adds    #2,r1
@@ -5106,14 +5159,19 @@ main_play_not_so_good_tone:
 
                 adds    #2,r1
 
-                mov.w   #H'140,r0       ; 7
+                mov.w   #H'11b,r0       ; 7
                 mov.w   r0,@r1
+                
+                adds    #2,r1
+                
+                mov.w   #h'101,r0       ; 8 
+                mov.w   r0,@r1                
 
 
 
 ;       Initiate the start tone
 
-                mov.b   #7,r0l
+                mov.b   #8,r0l
                 mov.b   r0l,@sound_length
                 mov.b   #0,r0l
                 mov.b   r0l,@sound_position
@@ -5395,12 +5453,12 @@ isr_clear_combined_value:							; ISR
 ;		dec	r0h				; 2			; ISR
 ;		bne	overlap_loop			; 4			; ISR
 										; ISR
-overlap_off:									; ISR		
+overlap_off:									; ISR
                 mov.b   r1l,@tenna_port			; 4			; ISR
 ;							; 2 uS if overlap = 0	; ISR
 ;							; + overlap_time X .3	; ISR
 ;  3 = 2.9 uS   6 = 3.8 uS   A = 5.0 uS   D = 5.9 uS  10 = 6.8 uS		; ISR
-; 14 = 8.0 us  17 = 8.9 uS  1A = 9.8 us  1E = 11 uS				; IRS              
+; 14 = 8.0 us  17 = 8.9 uS  1A = 9.8 us  1E = 11 uS				; IRS
                                                                                 ; ISR
 isr_set_timer:                                                                  ; ISR
 ;       Set the timer time-out                                                  ; ISR
@@ -5544,7 +5602,7 @@ ck_rt_msec_lcd:
                 mov.w   @rt_msec_lcd,r2
                 beq     ck_rt_msec_stepper
                 sub.w   R0,R2
-                mov.w   R2,@rt_msec_lcd               
+                mov.w   R2,@rt_msec_lcd
 
 ck_rt_msec_stepper:
                 mov.w   @rt_msec_stepper,r2
@@ -5622,7 +5680,7 @@ ck_rt_turn_on_uart_rx:
                 mov.b   r0l,@s0_serial_cntrl
 ;                mov.b	@s0_serial_status_reg,r0l
 ;                mov.b	#0,r0l
-;                mov.b	r0l,@s0_serial_status_reg                                
+;                mov.b	r0l,@s0_serial_status_reg
 
 no_more_ck_rt_sec:
                 rts
@@ -5763,6 +5821,7 @@ filt_3:
 		blo	filt_3_exit2		; Q too low
                 mov.b   @qsync_bearing,r1L
                 cmp.b	#100,r1l		; add or sub 100
+                beq	filt_3_DD100_exit
                 blo	filt_3_plus_100
                 add.b	#256 - 100,r1l		; sub #100
                 bra	filt_3_add_done
@@ -5792,7 +5851,7 @@ filt_3_n_lim_set:
 		mov.b	@filt_3_new_b,r0l
 		cmp.b	r1l,r0l
 		blo	filt_3_bad
-filt_3_low_ok:								
+filt_3_low_ok:
 		cmp.b	r1h,r0l
 		bls	filt_3_hi_ok
 filt_3_bad:		
@@ -5801,14 +5860,15 @@ filt_3_bad:
 		mov.b	r1l,@filt_3_bad_cnt
 		cmp.b	#FILT_3_BAD_MAX,r1l
 		blo	filt_3_hi_ok
+filt_3_DD100_exit:		
 		mov.b	#0,r1l
 		mov.b	r1l,@filt_3_bad_cnt
 		mov.b	r1l,@filt_3_sample_cnt
 		mov.b	#0,r1h
 		mov.w	r1,@filt_3_ave_total
 filt_3_exit2:		
-		jmp	filt_3_exit				
-filt_3_hi_ok:									
+		jmp	filt_3_exit
+filt_3_hi_ok:
 		mov.b	@filt_3_new_b,r1l
 		mov.b   @doppler_qual_0T9,r0l	
 		mulxu	r0l,r1
@@ -5889,7 +5949,11 @@ filt_4_Q_ok:
 		cmp.b	#50,r1l
 		blo	in_front
 		cmp.b	#150,r1l
-		blo	output_bearing		; it's to the rear
+		bhs	in_front
+		mov.w	#0,r0
+		mov.w	r0,@Bearing_sum		; if to rear start over
+		mov.b	r0l,@q_sum
+		bra	output_bearing
 in_front:
 		mov.b   @doppler_qual_0T9,r0l
 		bne	add_50
@@ -5946,7 +6010,7 @@ sample_num_ok:
 		cmp.b	#200,r1l
 		blo	output_bearing		; 150 to 199
 		add.b	#56,r1l
-output_bearing:				
+output_bearing:
 						; bearing in r1l
                 mov.b   #0,r1h
                 mov.w   r1,@filt_4_output
@@ -5963,17 +6027,43 @@ filt_4_done:
 		mov.b	@gps_speed_flag,r0l
 		beq	filt_4_exit		; do not update if slow
                 mov.w   r1,@filt_4_A_output
+;
+filt_4_exit:
+;
+filt_5:
+		mov.b	@filter_rot,r1l
+		inc	r1l
+		inc	r1l
+		cmp	#max_filter - 2,r1l
+		bls	filt_5_in_range
+		mov.b	#0,r1l
 		
-filt_4_exit:		 
-		rts              
+filt_5_in_range:
+		mov.b	r1l,@filter_rot
+		mov.b	#0,r1h
+		mov.w	#filt_0_output,r0
+		add.w	r0,r1			; r1 now points to
+						; filt_0 thru filt_last-1
+						; depending on filter_rot
+		mov.w	@r0,r1			; now have bearing from a filter
+		mov.w	r1,@filt_5_output
+filt_5_A:
+		mov.b	@filter_rot,r1l				
+		mov.b	#0,r1h
+		mov.w	#filt_0_A_output,r0
+		add.w	r0,r1			; r1 now points to
+						; filt_0 thru filt_last-1
+						; depending on filter_rot
+		mov.w	@r0,r1			; now have bearing from a filter
+		mov.w	r1,@filt_5_A_output
+				
+		rts
 ;
 ; ---------------------------------------------------------
 
 ;       Given a rotation rate 0-9, set the time base value
 ;       Time base from 8 bit timer #1
 ;       Rate is 0-9 in r1l
-
-     
 ;
 ;                             Entry with r1l new rot rate
 set_rotation_rate:
@@ -6244,10 +6334,7 @@ util_get_calibration_config:
                 mov.b   @r1,r0l
                 pop     r1
                 rts
-
-
-
-
+;
 ; ---------------------------------------------------------
 
 
@@ -6872,90 +6959,14 @@ button_bearing:
 
                 mov.b   #SEG_PAT_B,r1l
                 jsr     seg7_force_display
-
-;                mov.b   @GPS_echo_flag,r1L
-;                beq     button_bearing_write_now
-
-;                mov.b   @GPS_capture_flag,r0L
-;                beq     button_bearing_write_now
-
-;       Currently doing passthrough. Let the pass through
-;       process print out the GPS line.
-
-;                mov.b   #1,r0L
-;                mov.b   r0L,@ctrl_byte_Snoop_pending
-;                mov.b   r0L,@ctrl_byte_BEARING_FORCE_SNOOP
-;                rts
-
-;       Not in GPS passthrough, wo not mess up a line.
-;       Might as well print it now.
-
+;
 button_bearing_write_now:
                 jsr     util_write_bearing
                 mov.w   #eol_str,r1
                 jmp     @@write_buffered_str
-;       jsr     @@write_buffered_str
-;       rts
-
-;       Send a bearing line to the connected computer.
-
-;button_bearing_n_gps:
+;                
+; Removed stuff see Removed from line 6907
 ;
-;;       If we are streaming & GPS comming in, set pending.
-;;       If we are NOT STREAMING, can print now
-;
-;                mov.b   #SEG_PAT_B,r1h
-;                mov.b   #SEG_PAT_G,r1l
-;                jsr     seg7_force_2display
-;
-;                mov.b   @GPS_echo_flag,r1L
-;                beq     button_bearing_n_gps_write_now
-;
-;                mov.b   @GPS_capture_flag,r0L
-;                beq     button_bearing_n_gps_write_now
-;
-;
-;;       Currently doing passthrough.
-;;       Let the pass through  process print out the GPS line.
-;
-;                mov.b   #1,r0L
-;                mov.b   r0L,@ctrl_byte_Snoop_pending
-;                mov.b   r0L,@GPS_capture_flag_SNOOP_PENDING
-;                mov.b   r0L,@ctrl_byte_APRS_LIMIT
-;                rts
-;
-;;       Not in GPS passthrough, wo not mess up a line.
-;;       Might as well print it now.
-;
-;button_bearing_n_gps_write_now:
-;                jsr     util_query_do_aprs_snoop
-;                beq     button_bearing_n_gps_check_gps
-;
-;                mov.b   @doppler_qual_0T9,r1l
-;                beq     button_bearing_n_gps_check_gps
-;                mov.b   @snooper_qlevel,r0l
-;
-;                cmp.b   r0l,r1l
-;                bhs     button_bearing_n_gps_check_gps
-;
-;                jsr     util_write_bearing
-;                mov.w   #eol_str,r1
-;                jsr     @@write_buffered_str
-;
-;button_bearing_n_gps_check_gps:
-;                mov.w   @rt_sec_gps,r0
-;                beq     button_bearing_n_gps_exit
-;
-;;????                mov.w   #gps_valid_capture,r1
-;                mov.b   @r1,r0l
-;                beq     button_bearing_n_gps_exit
-;;????                mov.w   #gps_valid_capture,r1
-;                jsr     @@write_buffered_str
-;                mov.b   #LF,r1l
-;                jsr     @@write_buffered_char
-;button_bearing_n_gps_exit:
-;                rts
-
 ;       Turn on the attract mode.
 ;       This will stop the led driver and run
 ;       the attract process, and vice versa.
@@ -7172,12 +7183,14 @@ button_pointer_make_A:
 ; F7A6		filt_2_output:                  .res.w  1
 ; F7A8		filt_3_output:                  .res.w  1
 ; F7AA		filt_4_output:			.res.w	1
-;                                                          
+; 		filt_5_output			.res.w	1
+;
 ; F7AC		filt_0_A_output:                .res.w  1
 ; F7AE		filt_1_A_output:                .res.w  1
 ; F7B0		filt_2_A_output:                .res.w  1
 ; F7B2		filt_3_A_output:                .res.w  1
-; F7B4		filt_4_A_output:                .res.w  1 
+; F7B4		filt_4_A_output:                .res.w  1
+;		filt_5_A_output:                .res.w  1
 ;     
 update_data_4_pointer:
 
@@ -7191,13 +7204,13 @@ update_data_4_pointer:
                 add.w   r0,r1                           ; filter output data address
                 mov.w   #data_4_ptr,r0
 ;                .data.w h'5770
-                mov.w   r1,@r0			; trouble in here                
+                mov.w   r1,@r0				; trouble in here
 		rts               
 ;
 button_ledf:
                 mov.b   @current_LED_filter,r0l
                 inc     r0L
-                cmp.b   #max_filter/2-1,r0l                ; Last filter
+                cmp.b   #max_filter/2,r0l		; Last filter
                 bls     button_LED_filter_in_range
                 mov.b   #0,r0l                          ; set ledf to 0
 
@@ -7234,6 +7247,7 @@ button_leda_make_R
                 mov.b	#SEG_PAT_LOW_R,r1l
                 jmp     seg7_force_2display
 ;
+;
 button_leda_make_A:
 		mov.b   #max_filter,r0l
 		mov.b   r0l,@LED_abs_flag
@@ -7253,7 +7267,7 @@ update_data_4_leds:
                 mov.w   #filt_0_output,r1
                 add.w   r0,r1                           ; filter output data address
                 mov.w   #data_4_leds,r0
-                mov.w   r1,@r0                
+                mov.w   r1,@r0
 		rts
 ;
 button_lcda:
@@ -7313,7 +7327,7 @@ button_lcdr_filter_in_range:
 button_dim:
                 mov.w   #ctrl_byte_Dim_LED,r0
                 bxor    #0,@r0
-                rts                             
+                rts
 ;
 ;	Change the rotation rate of the antennas.
 ;	This happens in sequence.
@@ -7438,7 +7452,7 @@ make_hold_1:
 		
 		mov.b   #SEG_PAT_H,r1l
                 jsr     seg7_force_display
-                mov.b	#1,r0l                
+                mov.b	#1,r0l
 save_hold:                
                 mov.b   r0l,@ctrl_byte_hold
                 rts
@@ -7837,9 +7851,8 @@ cmd_eerestore_read_loop:
 		inc	r1l
 		cmp.b	#eeprom_image_size/2,r1l
 		bne	cmd_eerestore_read_loop	
-		rts					
-
-
+		rts
+;
 fence_eeprom_end:
 
 fence_cmd_start:
@@ -7964,7 +7977,7 @@ cmd_baud_test_12:
                 bne     cmd_baud_test_24
 cmd_baud_set_12:
                 mov.b   #BIT_RATE_1200,r0l
-                rts                                
+                rts
 cmd_baud_test_24:
                 cmp.b   #h'24,r0l
                 beq     cmd_baud_set_24
@@ -7986,14 +7999,14 @@ cmd_baud_set_48:
 cmd_baud_test_96:
                 cmp.b   #h'96,r0l
                 beq     cmd_baud_set_96
-                mov.w   #h'9600,r1                
+                mov.w   #h'9600,r1
                 cmp.w   r1,r0
-                bne     cmd_baud_set_19200                
+                bne     cmd_baud_set_19200
 cmd_baud_set_96:
                 mov.b   #BIT_RATE_9600,r0l
                 rts
 cmd_baud_set_19200:
-		mov.b	#BIT_RATE_19200,r0l                
+		mov.b	#BIT_RATE_19200,r0l
 		rts
 cmd_baud_set_done:                              ; XXXX Error
 ;       rts
@@ -8008,7 +8021,7 @@ cmd_baud_show:
 cmd_baud_show2:
 		mov.w   #uart1_str,r1
                 jsr     @@write_buffered_str
-                mov.b   @serial_rate1,r1l                
+                mov.b   @serial_rate1,r1l
 cmd_baud_show_12:
                 cmp.b   #BIT_RATE_1200,r1l
                 bne     cmd_baud_show_24
@@ -8039,7 +8052,7 @@ cmd_baud_show_19:
                 mov.b   #h'19,r1l
                 jsr     @@write_byte
                 mov.b	#2,r1l
-                mov.b   #0,r1h                              
+                mov.b   #0,r1h
                 jsr     @@write_dec_word
                 bra     cmd_show_done                
 cmd_baud_show_eh:
@@ -8072,7 +8085,7 @@ cmd_baud2_test_12:
 cmd_baud2_set_12:
                 mov.b   #BIT_RATE_1200,r0l
                 mov.b   r0l,@serial_rate1
-                bra     cmd_baud2_set_done                                
+                bra     cmd_baud2_set_done
 cmd_baud2_test_24:
                 cmp.b   #h'24,r0l
                 beq     cmd_baud2_set_24
@@ -8098,7 +8111,7 @@ cmd_baud2_test_96:
                 beq     cmd_baud2_set_96
                 mov.w   #h'9600,r1
                 cmp.w   r1,r0
-                bne     cmd_baud2_set_192                
+                bne     cmd_baud2_set_192
 cmd_baud2_set_96:
                 mov.b   #BIT_RATE_9600,r0l
                 mov.b   r0l,@serial_rate1
@@ -8152,7 +8165,7 @@ cmd_btab_show_full_loop:
                 bra     cmd_btab_show_full_loop
 
 cmd_btab_show_full_done:
-                rts                
+                rts
 ;
 ;       show the button function table
 ;
@@ -8396,47 +8409,46 @@ cmd_set_calv:
 					; Convert to a binary value
 					; Return decimal value (r0)
 					; Ret zero set if ok
-				                
+;
  		bne	calv_error
 		cmp.b	#10,r0l		; is it in range 0-9
 		bcc	calv_error
-		push	r0		
-		
+		push	r0
+;
                 jsr	read_dec_word
                 cmp.b	#200,r0l
                 bcc	calv_error_1
                 mov.w	r0,@temp_rot_value
-                
+;
                 mov.b   @current_config,r0l	; Given a configuration id (1-4) r0l
                 jsr     get_config_ptr		; Ret address in R0
                 				; enabled - cal val not set
-                                                ; 4 ant  - 1 active high   
-                                                ; calibrate rot rate 0     
-		                                ; calibrate rot rate 1     
-                                                ; calibrate rot rate 2     
-                                                ; calibrate rot rate 3     
-                                                ; calibrate rot rate 4     
-                                                ; calibrate rot rate 5     
-                                                ; calibrate rot rate 6     
-                                                ; calibrate rot rate 7     
-                                                ; calibrate rot rate 8     
-                                                ; calibrate rot rate 9     
-                                                ; default rotation rate    
+                                                ; 4 ant  - 1 active high
+                                                ; calibrate rot rate 0
+		                                ; calibrate rot rate 1
+                                                ; calibrate rot rate 2
+                                                ; calibrate rot rate 3
+                                                ; calibrate rot rate 4
+                                                ; calibrate rot rate 5
+                                                ; calibrate rot rate 6
+                                                ; calibrate rot rate 7
+                                                ; calibrate rot rate 8
+                                                ; calibrate rot rate 9
+                                                ; default rotation rate
 		pop	r1
 		push	r1
 		add.w	r1,r0
 		adds	#2,r0			; now points to rot to change
 		mov.w	@temp_rot_value,r1
 		mov.b	r1l,@r0
-
-                                               
+;
 ;       Show the antenna configuration
 		mov.b   r1l,@calibration        ; correct calabration
 		pop	r1
 		jsr	set_rotation_rate	; to filters 
-                                               
+;
 cmd_show_calv:
-                          
+;
 		jsr	write_current_config   
                 jmp     util_write_calibrations
 
@@ -8513,11 +8525,9 @@ cmd_acvoltage_show:
                 mov.w   #str_acheck_volts,r1
                 jsr     @@write_buffered_str
                 rts
-
+;
 ; ---------------------------------------------------------
-
-
-
+;
 cmd_config:
                 mov.w   #inp_buf,r1
                 jsr     cmd_skip_token
@@ -8790,60 +8800,56 @@ cmd_eeprom_read_test:
 eeprom_read_fail:
                 mov.w   #str_addr_not_in_range,r1
                 jmp     @@writeln_buffered_str
-
-;       eeprom print to memory. Displays the EEPROM.
-
+;
 cmd_eedump:
-
-                mov.w   #00,r3
-
-;       Read Value
-
+;
+;       eeprom print to memory. Displays the EEPROM.
+;
+                mov.b   #00,r4h			; address counter line
+;
 cmd_eedump_read_loop:
-                mov.b   r3l,r1l
-                jsr     @@write_byte
-
-                mov.w   #str_eedump_separator,r1
-                jsr     @@write_buffered_str
-
-                mov.b   #0,r4l
-
+                mov.b   #00,r4l			; address counter per line
+;
 cmd_eedump_read_line_loop:
-
-                mov.b   r3l,r1l
-                add.b   r4l,r1l
-                jsr     eeprom_read
-
-;       Print value for confirmation
-                mov.w   r0,r1
-                jsr     @@write_word
-                mov.w   #str_eedump_space,r1
-                jsr     @@write_buffered_str
-
-                inc     r4l
-                mov.b   #8,r4h
-                cmp.b   r4h,r4l
+;
+		mov.b	r4h,r1l
+                jsr     eeprom_read		; get word (2 Bytes)
+						; r1l address r0 data
+;
+		push	r0			; Print 2 Bytes
+                mov.b   r0h,r1l			; with space after
+                jsr     @@write_byte            ;     "
+                mov.b	#' ',r1l                ;     "
+		jsr     @@write_buffered_char   ;     "
+		pop	r0                      ;     "
+		mov.b	r0l,r1l                 ;     "
+		jsr     @@write_byte            ;     "
+                mov.b	#' ',r1l                ;     "
+		jsr     @@write_buffered_char   ;     "
+;
+		inc	r4h			; next Word
+		cmp.b	#(eeprom_ram_size/2),r4h ; last Word?
+		beq	cmd_eedump_exit
+                inc     r4l			; next position in line
+                				; 2 bytes X 8 = 16 per line
+                cmp.b   #8,r4l			; end of line?
                 bne     cmd_eedump_read_line_loop
 
-                mov.w   #eol_str,r1
+                mov.w   #eol_str,r1		; yes start new line
                 jsr     @@write_buffered_str
-
-                add.b   r4l,r3l
-                mov.b   #h'80,r3h
-                cmp.b   r3l,r3h
-                bne     cmd_eedump_read_loop
-                rts
-
-;       Save the current configuration to the EEPROM.
-;       Version 2.X format
-
-
+		mov.b   #00,r4l
+                bra     cmd_eedump_read_loop
+cmd_eedump_exit:
+		mov.w   #eol_str,r1		; new line
+                jmp     @@write_buffered_str                
+;
+cmd_eeprom_zero:
+;
 ;       Clear the EEPROM to all zeros.
 ;       When the doppler initializes, a zero EEPROM will be ignored.
 ;       This is also good for during software development when you
 ;       change the format of the saved persistant information.
-
-cmd_eeprom_zero:
+;
                 jsr     eeprom_write_enable
 
 ;       Write Byte value to eeprom
@@ -9067,8 +9073,8 @@ cmd_cw_doit:
 ;               -k      do not use key click
 ;               +p      pointer and dial work
 ;               -p      no pointer and stepper, turn off processes.
-;               +g      Auto GPS stream echo
-;               -g      Echo GPS/Bearing info upon demand (default)
+;               +g      Auto GPS stream echo + Bearing and Q 1 per Sec
+;               -g      Byte Bearing  0 to 199   Byte Q  h'FQ on change
 ;               +0      Use old format of bearing for APRS compat
 ;               -0      Do not use old APRS format
 
@@ -9081,32 +9087,22 @@ cmd_opt:
                 jsr     cmd_skip_token
                 beq     cmd_opt_do
                 jmp     cmd_opt_show
-
+;
 cmd_opt_do:
                 mov.b   @r1,r0l
+                mov.b   #00,r2l			; Default False
                 cmp.b   #  '+'  ,r0l
-                beq     cmd_opt_add_flag
-cmd_opt_remove_flag:
-                mov.b   #00,r2l
-                bra     cmd_opt_get_code
-cmd_opt_add_flag:
-                mov.b   #01,r2l
-cmd_opt_get_code:
-                adds    #1,r1
-                mov.b   @r1,r0l
+                bne     cmd_opt_false_flag
 
-;       Convert to upper case first.
-                cmp.b   #  'a'  ,r0l
-                blo     cmd_opt_no_convert
-                cmp.b   #  'z'  ,r0l
-                bhi     cmd_opt_no_convert
-                bclr    #5,r0l
+                mov.b   #01,r2l			; Make True
+cmd_opt_false_flag:                
+                adds    #1,r1			; Next Char
+                mov.b   @r1,r0l
+                bclr    #5,r0l			; Convert to upper case
 ;
-cmd_opt_no_convert:
-;
-cmd_opt_check2:
+cmd_opt_check_B:
 		cmp.b   #  'B'  ,r0l		; Doppler bearing
-                bne     cmd_opt_check4
+                bne     cmd_opt_check_T
                 cmp.b   #0,r2l
 		bne     cmd_opt_add_bearing
 cmd_opt_remove_bearing:
@@ -9116,29 +9112,27 @@ cmd_opt_remove_bearing:
 cmd_opt_add_bearing:
                 mov.b   #1,r4L
                 mov.b   r4L,@bearing_print_flag
-                jmp     cmd_opt_exit                
-
-;       OPTION Old APRS Compatibility
-
-cmd_opt_check3:
-                cmp.b   #  '0'  ,r0l
-                bne     cmd_opt_check4
-                cmp.b   #0,r2l
-                bne     cmd_opt_add_compatibility
-cmd_opt_remove_compatibility:
-                mov.b   #0,r4L
-                mov.b   r4L,@ctrl_byte_Old_APRS_compat
-                jmp     cmd_opt_exit
-cmd_opt_add_compatibility:
-                mov.b   #1,r4L
-                mov.b   r4L,@ctrl_byte_Old_APRS_compat
                 jmp     cmd_opt_exit
 
-;       Startup tone option
-
-cmd_opt_check4:
-                cmp.b   #  'T'  ,r0l
-                bne     cmd_opt_check5
+;;       OPTION Old APRS Compatibility
+;
+;cmd_opt_check3:
+;                cmp.b   #  '0'  ,r0l
+;                bne     cmd_opt_check4
+;                cmp.b   #0,r2l
+;                bne     cmd_opt_add_compatibility
+;cmd_opt_remove_compatibility:
+;                mov.b   #0,r4L
+;                mov.b   r4L,@ctrl_byte_Old_APRS_compat
+;                jmp     cmd_opt_exit
+;cmd_opt_add_compatibility:
+;                mov.b   #1,r4L
+;                mov.b   r4L,@ctrl_byte_Old_APRS_compat
+;                jmp     cmd_opt_exit
+;
+cmd_opt_check_T:
+                cmp.b   #  'T'  ,r0l		; Startup tone option
+                bne     cmd_opt_check_K
                 cmp.b   #0,r2l
                 bne     cmd_opt_add_tone
 cmd_opt_remove_tone:
@@ -9151,12 +9145,10 @@ cmd_opt_add_tone:
                 mov.b   #1,r4L
                 mov.b   r4L,@ctrl_byte_Start_tone
                 jmp     cmd_opt_exit
-
-;       Button click feedback
-
-cmd_opt_check5:
-                cmp.b   #  'K'  ,r0l
-                bne     cmd_opt_check6
+;                
+cmd_opt_check_K:
+                cmp.b   #  'K'  ,r0l		; Button click feedback
+                bne     cmd_opt_check_P
                 cmp.b   #0,r2l
                 bne     cmd_opt_add_click
 cmd_opt_remove_click:
@@ -9167,12 +9159,10 @@ cmd_opt_add_click:
                 mov.b   #1,r4L
                 mov.b   r4L,@ctrl_byte_Button_click
                 bra     cmd_opt_exit
-
-;       Pointer availability
-
-cmd_opt_check6:
-                cmp.b   #  'P'  ,r0l
-                bne     cmd_opt_check7
+;
+cmd_opt_check_P:
+                cmp.b   #  'P'  ,r0l		; Pointer availability
+                bne     cmd_opt_check_G
                 cmp.b   #0,r2l
                 bne     cmd_opt_add_pointer
 cmd_opt_remove_pointer:
@@ -9189,28 +9179,24 @@ cmd_opt_add_pointer:
                 mov.b   r0l,@ps_dial_out
                 mov.b   r0l,@ps_stepper_driver
                 bra     cmd_opt_exit
-
-;       GPS Streaming mode
 ;
-cmd_opt_check7:
-                cmp.b   #  'G'  ,r0l
-                bne     cmd_opt_check8
+cmd_opt_check_G:
+                cmp.b   #  'G'  ,r0l		; GPS Streaming mode
+                bne     cmd_opt_check_D
                 cmp.b   #0,r2l
                 bne     cmd_opt_add_gps
 cmd_opt_remove_gps:
-                mov.b   #0,r4L
+                mov.b   #0,r4L			; False
                 mov.b   r4L,@GPS_echo_flag
                 bra     cmd_opt_exit
 cmd_opt_add_gps:
-                mov.b   #1,r4L
+                mov.b   #1,r4L			; True
                 mov.b   r4L,@GPS_echo_flag
                 bra     cmd_opt_exit
-
-;       Dim light mode
-
-cmd_opt_check8:
-                cmp.b   #  'D'  ,r0l
-                bne     cmd_opt_check9
+;
+cmd_opt_check_D:
+                cmp.b   #  'D'  ,r0l		; Dim light mode
+                bne     cmd_opt_check_A
                 cmp.b   #0,r2l
                 bne     cmd_opt_add_dim
 cmd_opt_remove_dim:
@@ -9224,7 +9210,7 @@ cmd_opt_add_dim:
 
 ;       Turn off antenna checker
 
-cmd_opt_check9:
+cmd_opt_check_A:
                 cmp.b   #  'A'  ,r0l
                 bne     cmd_opt_abort
                 cmp.b   #0,r2l
@@ -9237,17 +9223,12 @@ cmd_opt_add_check:
                 mov.b   #1,r4L
                 mov.b   r4L,@ctrl_byte_CHECK_ANTENNA
                 bra     cmd_opt_exit
-
+;
 cmd_opt_exit:
-
 cmd_opt_abort:
-;       bra     cmd_opt_show
-
 cmd_opt_show:
-
-;       Show Antenna Checker
-
-                mov.b   @ctrl_byte_CHECK_ANTENNA,r4L
+;
+                mov.b   @ctrl_byte_CHECK_ANTENNA,r4L	; Show Antenna Checker
                 bne     cmd_show_no_check
 cmd_show_check:
                 mov.b   #  '+'  ,r1l
@@ -9258,11 +9239,8 @@ cmd_show_write_check:
                 jsr     @@write_buffered_char
                 mov.w   #str_antenna_checker,r1
                 jsr     @@writeln_buffered_str
-
-;       Show DIM LED MODE
-
-
-                mov.b   @ctrl_byte_Dim_LED,r4L
+;
+                mov.b   @ctrl_byte_Dim_LED,r4L		; Show DIM LED MODE
                 beq     cmd_show_no_dim_led
 cmd_show_dim_led:
                 mov.b   #  '+'  ,r1l
@@ -9273,25 +9251,18 @@ cmd_show_write_dim:
                 jsr     @@write_buffered_char
                 mov.w   #str_dim_led,r1
                 jsr     @@writeln_buffered_str
-
-;       Show GPS Streaming
 ;
-
-                mov.b   @GPS_echo_flag,r4L
-                beq     cmd_show_no_gps
+                mov.b   @GPS_echo_flag,r4L		; Show GPS Streaming
+                beq     cmd_show_Byte_bearing_Q
 cmd_show_gps:
-                mov.b   #  '+'  ,r1l
-                bra     cmd_show_write_gps
-cmd_show_no_gps:
-                mov.b   #  '-'  ,r1l
-cmd_show_write_gps:
-                jsr     @@write_buffered_char
-                mov.w   #str_gps,r1
+                mov.w   #str_GPSs,r1
                 jsr     @@writeln_buffered_str
-                
-;       Show Doppler bearing + Q
-;
-
+                bra     cmd_show_bearing_flag
+cmd_show_Byte_bearing_Q:
+                mov.w   #str_B_Q,r1
+                jsr     @@writeln_buffered_str
+;                
+cmd_show_bearing_flag:
                 mov.b   @Bearing_print_flag,r4L
                 beq     cmd_show_no_bearing
 cmd_show_bearing:
@@ -9302,11 +9273,9 @@ cmd_show_no_bearing:
 cmd_show_write_bearing:
                 jsr     @@write_buffered_char
                 mov.w   #str_bearing_print,r1
-                jsr     @@writeln_buffered_str                
+                jsr     @@writeln_buffered_str
 ;                
-;       Show startup tone
-;
-                mov.b   @ctrl_byte_Start_tone,r3H
+                mov.b   @ctrl_byte_Start_tone,r3H	; Show startup tone
                 beq     cmd_show_no_tone
 cmd_show_tone:
                 mov.b   #  '+'  ,r1l
@@ -9475,8 +9444,7 @@ cmd_ps_end_of_line:
                 jsr     @@write_buffered_str
                 adds    #2,r2
                 bra     cmd_ps_loop
-
-
+;
 cmd_read_byte:
                 mov.w   #inp_buf,r1
                 jsr     cmd_skip_token
@@ -9509,9 +9477,7 @@ cmd_read_byte_ok:
                 bne     cmd_read_byte_ok
                 mov.w   #eol_str,r1
                 jmp     @@write_buffered_str
-
-
-
+;
 cmd_read_byte_error:
                 mov.w   #str_addr_not_in_range,r1
                 jmp     @@writeln_buffered_str
@@ -9740,8 +9706,7 @@ cmd_write_word_exit:
                 rts
 
 ;       Utility, given buffer in r1, convert the char to boolean.
-
-
+;
 ;       	1 | T | H == true  (1)
 ; anything but  1 | T | H == false (0)
 ;       value returned in r0l
@@ -10082,33 +10047,33 @@ stepper_table:
 ;				  1 34   2   1 34   2   1423  1423
 st_1:                                                   7415  7415
                 .data.w h'8C8C	; 1000 1100  1000 1100  1000  1000
-                .data.w st_2                                      
-                .data.w st_8                                      
-                                                                  
+                .data.w st_2
+                .data.w st_8
+;
 st_2:           .data.w h'DDCF	; 1101 1101  1100 1111  1100  1010
-                .data.w st_3                                      
-                .data.w st_1                                      
-                                                                  
+                .data.w st_3
+                .data.w st_1
+;
 st_3:           .data.w h'5C4E	; 0101 1100  0100 1110  0100  0010
-                .data.w st_4                                      
-                .data.w st_2                                      
-                                                                  
+                .data.w st_4
+                .data.w st_2
+;
 st_4:           .data.w h'5E6E	; 0101 1110  1110 1110  0110  0011 error? 5f6e
-                .data.w st_5                                      
-                .data.w st_3                                      
-                                                                  
+                .data.w st_5
+                .data.w st_3
+;
 st_5:           .data.w h'0E2C	; 0000 1110  0010 1100  0010  0001
-                .data.w st_6                                      
-                .data.w st_4                                      
-                                                                  
+                .data.w st_6
+                .data.w st_4
+;
 st_6:           .data.w h'2F3D	; 0010 1111  0011 1101  0011  0101
-                .data.w st_7                                      
-                .data.w st_5                                      
-                                                                  
+                .data.w st_7
+                .data.w st_5
+;
 st_7:           .data.w h'2C1C	; 0010 1100  0001 1100  0001  0100
-                .data.w st_8                                      
-                .data.w st_6                                      
-                                                                  
+                .data.w st_8
+                .data.w st_6
+;
 st_8:           .data.w h'AD9D	; 1010 1101  1001 1101  1001  1100
                 .data.w st_1	;  N   BZ N
                 .data.w st_7	;  C   L  C
@@ -10189,7 +10154,7 @@ LED_8_table:
 		.data.b  h'77				; 049
 		.data.b  h'77				; 050
 		.data.b  h'77				; 051
-				
+;
 		.data.b  h'00				; 148
 		.data.b  h'00				; 149
 		.data.b  h'00				; 150
@@ -10242,9 +10207,7 @@ LED_8_table:
 		.data.b  h'f0				; 197
 		.data.b  h'f0				; 198
 		.data.b  h'f0				; 199
-																												
-							   
-																																										
+;	
 ; ---------------------------------------------------------
 ;
 ;       This is the process table
@@ -10432,7 +10395,7 @@ bt_leda:                .data.w FUNC_LED_ABS    ; Absoulte-Relative bearing LEDs
                 .data.w         button_leda
                 .sdata  "blfa"
                 .data.w 0
-                .data.w         bstr_leda               
+                .data.w         bstr_leda
 
 bt_led_speed:   .data.w         FUNC_LED_SPEED
                 .data.w         button_led_speed
@@ -10444,10 +10407,10 @@ bt_dim:         .data.w         FUNC_DIM_LED
                 .data.w button_dim
                 .sdata  "bdim"
                 .data.w         0
-                .data.w         bstr_dim                
-                
+                .data.w         bstr_dim
+;
 ; Pointer -------------------------------------------------------------                
-                
+;
 bt_ptrf:                .data.w FUNC_PTR_FILT   ; What filter to use with PTR
                 .data.w         button_ptrf
                 .sdata  "bpfl"
@@ -10479,7 +10442,6 @@ bt_lcdr:	.data.w         FUNC_LCD_R	; LCD reliative bearing filter
                 .sdata  "blcr"
                 .data.w         0
                 .data.w         bstr_lcd_rel                
-
 ;
 ;       function code   (word - low order byte)
 ;       entry pt                (address)
@@ -10576,10 +10538,6 @@ cli_cmd_table:
                 .data.w cmd_eedump
                 .data.w cmd_help_eedump
 
-                .data.w cmd_str_eeprom_read
-                .data.w cmd_eeprom_read_test
-                .data.w cmd_help_eeprom_read
-
                 .data.w cmd_str_eeprom
                 .data.w cmd_eeprom_write_test
                 .data.w cmd_help_eeprom
@@ -10594,11 +10552,11 @@ cli_cmd_table:
                 
                 .data.w cmd_str_gpsout
                 .data.w cmd_gpsout
-                .data.w cmd_help_gpsout                
+                .data.w cmd_help_gpsout
 
                 .data.w cmd_str_gps_min_speed		; gpss
                 .data.w cmd_gps_set_speed
-                .data.w cmd_help_gps_min_speed                
+                .data.w cmd_help_gps_min_speed
 ;       help
                 .data.w cmd_str_help
                 .data.w cmd_help
@@ -10778,27 +10736,26 @@ welcome_str:
  .sdata "\n\r"
  .sdata  "*********************************\n\r"
  .sdata  "*      MicroFinder Doppler      *\n\r"
- .sdata  "*    (C) Copyright 1996-2012    *\n\r"
+ .sdata  "*    (C) Copyright 1996-2014    *\n\r"
  .sdata  "*      All rights reserved.     *\n\r"
  .sdata  "*                               *\n\r"
  .sdata  "*       AHHA! Solutions         *\n\r"
  .sdata  "*   KE6GDD KE6GDH KN6FW KN6ZT   *\n\r"
  .sdata  "*                               *\n\r"
- .sdata  "*  Version FW1.1    2013-12-07  *\n\r"
+ .sdata  "*  Version FW1.2    2014-01-20  *\n\r"
  .sdataz "*********************************\n\r"
 ;
 str_lcd_line1:
 		
 		.data.b	h'8c,h'b8,h'80
 		.sdata  "C 555 An 444 Lrn"
-;			 1234567890123456		
+;			 1234567890123456
 		.data.b	h'c0
 		.sdata  "R5 Q9 Rn 666 Prn"
 		.data.b	h'ff
-str_lcd_line1_end:		
+str_lcd_line1_end:
 lcd_length: 	.equ	str_lcd_line1_end - str_lcd_line1
-		 		
-;			
+;
 str_error_ant_1:
                 .sdataz "Antenna 1 overrun.\n\r"
 bad_hex:        .sdataz "Bad Hex number.\n\r"
@@ -10813,10 +10770,12 @@ str_antenna_checker:
                 .sdataz "a / Antenna check"
 str_dim_led:
                 .sdataz "d / Dim LED"
-str_gps:
-                .sdataz "g / GPS streaming"
+str_GPSs:
+                .sdataz "+g / GPS + Bearing Q"
+str_B_Q:
+                .sdataz "-g / Byte Bearing and Q"
 str_bearing_print:
-                .sdataz "b / Bearing print"                
+                .sdataz "b / Bearing print"
 str_start_tone:
                 .sdataz "t / Startup tone"
 str_compat:
@@ -10830,14 +10789,13 @@ str_button_click:
 
 str_gprmc_parse:
                 .sdataz "$gprmc"
-
-
+;
 str_bslash:
                 .sdataz "\\"
 str_eh:
                 .sdataz "????"
 str_baud_error:
-                .sdataz "Rate error"                
+                .sdataz "Rate error"
 
 proc_header:
                 .sdataz "PROC  STATE"
@@ -10925,7 +10883,7 @@ str_rotation_out_range:
 str_GPS_speed_high:
                         .sdataz "GPS speed too high. max 19"
 str_current_config:
-			.sdataz "Current Config "                       
+			.sdataz "Current Config "
 str_antenna_is:
                         .sdataz "\r\nAntenna elements : "
 str_antenna_sw_hi:
@@ -11024,10 +10982,8 @@ str_soft_brk:
 str_reg_display:
                         .sdataz "\n\r R0   R1   R2   R3   R4   R5   R6   SP  IUHUNZVC"
 uart0_str:              .sdataz "Command serial "
-uart1_str:              .sdataz "Second serial  "          
-
-
-
+uart1_str:              .sdataz "Second serial  "
+;
 hex_table:              .data.b                 h'30
                         .data.b                 h'31
                         .data.b                 h'32
@@ -11289,8 +11245,7 @@ seg7_pattern_5_dot:
                         .data.b  SEG7_F
                         .data.b  SEG7_G
                         .data.b  SEG7_DOT
-                        .data.b  0                        
-
+                        .data.b  0
 ;
 ; GPS "comand"
 ;cmd_help_GPS:
@@ -11431,10 +11386,6 @@ cmd_str_eedump:
                         .sdataz "eed*ump"
 cmd_help_eedump:
                         .sdataz "Deedump                 Print out the EEPROM to screen"
-cmd_str_eeprom_read:
-                        .sdataz "eer*ead"
-cmd_help_eeprom_read:
-                        .sdataz "Deeread    ##           Print one value from EEPROM"
 cmd_str_eeprom:
                         .sdataz "eew*rite"
 cmd_help_eeprom:
@@ -11481,7 +11432,7 @@ pstr_serial_output:
 pstr_buttin:
                         .sdataz "Button input"
 pstr_lcd:
-			.sdataz "lcd display"                        
+			.sdataz "lcd display"
 pstr_attractor:
                         .sdataz "IMPRESS your friends"
 pstr_led_ring_display:
@@ -11512,9 +11463,9 @@ bstr_separator:
 bstr_rot_rate_cal:
 			.sdataz "\n\rR0   R1   R2   R3   R4   R5   R6   R7   R8   R9\n\r"
 bstr_antennas:
-			.sdataz " Antennas Active "                        
+			.sdataz " Antennas Active "
                                                 
-; Print strings -------------------------------------------------------                 
+; Print strings -------------------------------------------------------
 bstr_bearing:
                         .sdataz "Print current bearing"
 bstr_bearing_n_gps:
@@ -11563,11 +11514,11 @@ bstr_accept:
 bstr_threshold:
 			.sdataz "Change Q threshold"
 bstr_sample_size:
-			.sdataz "Set filter sample size"			                        
+			.sdataz "Set filter sample size"
 bstr_lcd_ab:
                         .sdataz "LCD absolute filter"
 bstr_lcd_rel:
-                        .sdataz "LCD relative filter"                                                                                                                       
+                        .sdataz "LCD relative filter"
 bstr_custom_1:
                         .sdataz "Print `CB1`"
 bstr_custom_2:
@@ -11593,11 +11544,11 @@ bstr_func_4:
 ;
 ; *******************************************************************
 ;
-                .res.b  h'9e            ; Manual set for debug to
+                .res.b  h'1c            ; Manual set for debug to
                 .data.w 1               ; keep eeprom image on even boundry
 ;
 eeprom_image:
-                .data.w h'0301          ; ver_number
+                .data.w h'f002          ; ver_number
 ;       init_processes
                 .data.b 1               ; ps_serial_in          on
                 .data.b 2		; ps_lcd		sleep
@@ -11701,65 +11652,65 @@ FUNC_CUST_4:                    .EQU	h'74
 ;
 ;config_1:
                 .data.b h'11    ; enabled - cal val not set
-                .data.b h'51    ; 5 ant  - 1 active high
-                .data.b 134     ; calibrate rot rate 0
-                .data.b 140     ; calibrate rot rate 1
-                .data.b 146     ; calibrate rot rate 2
-                .data.b 30      ; calibrate rot rate 3
-                .data.b 40      ; calibrate rot rate 4
-                .data.b 50      ; calibrate rot rate 5
-                .data.b 60      ; calibrate rot rate 6
-                .data.b 70      ; calibrate rot rate 7
-                .data.b 80      ; calibrate rot rate 8
-                .data.b 90      ; calibrate rot rate 9
-                .data.b 5       ; default rotation rate
+                .data.b h'41    ; 4 ant  - 1 active high
+                .data.b 18	; calibrate rot rate 0
+                .data.b 26	; calibrate rot rate 1
+                .data.b 37	; calibrate rot rate 2
+                .data.b 44	; calibrate rot rate 3
+                .data.b 50	; calibrate rot rate 4
+                .data.b 55	; calibrate rot rate 5
+                .data.b 61	; calibrate rot rate 6
+                .data.b 66	; calibrate rot rate 7
+                .data.b 72	; calibrate rot rate 8
+                .data.b 79      ; calibrate rot rate 9
+                .data.b 6       ; default rotation rate
 ;
 ;config_2:
                 .data.b h'01    ; enabled - cal val not set
-                .data.b h'61    ; ? ant  - active?   
-                .data.b 0       ; calibrate rot rate 0     
-                .data.b 0       ; calibrate rot rate 1     
-                .data.b 0       ; calibrate rot rate 2     
-                .data.b 0       ; calibrate rot rate 3     
-                .data.b 0       ; calibrate rot rate 4     
-                .data.b 0       ; calibrate rot rate 5     
-                .data.b 0       ; calibrate rot rate 6     
-                .data.b 0       ; calibrate rot rate 7     
-                .data.b 0       ; calibrate rot rate 8     
-                .data.b 0       ; calibrate rot rate 9     
-                .data.b 0       ; default rotation rate    
-
+                .data.b h'61    ; ? ant  - active?
+                .data.b 0       ; calibrate rot rate 0
+                .data.b 0       ; calibrate rot rate 1
+                .data.b 0       ; calibrate rot rate 2
+                .data.b 0       ; calibrate rot rate 3
+                .data.b 0       ; calibrate rot rate 4
+                .data.b 0       ; calibrate rot rate 5
+                .data.b 0       ; calibrate rot rate 6
+                .data.b 0       ; calibrate rot rate 7
+                .data.b 0       ; calibrate rot rate 8
+                .data.b 0       ; calibrate rot rate 9
+                .data.b 0       ; default rotation rate
+;
 ;config_3:
                 .data.b h'01    ; enabled - cal val not set
-                .data.b h'81    ; ? ant  -  active?   
-                .data.b 0       ; calibrate rot rate 0     
-                .data.b 0       ; calibrate rot rate 1     
-                .data.b 0       ; calibrate rot rate 2     
-                .data.b 0       ; calibrate rot rate 3     
-                .data.b 0       ; calibrate rot rate 4     
-                .data.b 0       ; calibrate rot rate 5     
-                .data.b 0       ; calibrate rot rate 6     
-                .data.b 0       ; calibrate rot rate 7     
-                .data.b 0       ; calibrate rot rate 8     
-                .data.b 0       ; calibrate rot rate 9     
-                .data.b 0       ; default rotation rate    
+                .data.b h'81    ; ? ant  -  active?
+                .data.b 0       ; calibrate rot rate 0
+                .data.b 0       ; calibrate rot rate 1
+                .data.b 0       ; calibrate rot rate 2
+                .data.b 0       ; calibrate rot rate 3
+                .data.b 0       ; calibrate rot rate 4
+                .data.b 0       ; calibrate rot rate 5
+                .data.b 0       ; calibrate rot rate 6
+                .data.b 0       ; calibrate rot rate 7
+                .data.b 0       ; calibrate rot rate 8
+                .data.b 0       ; calibrate rot rate 9
+                .data.b 0       ; default rotation rate
 ;config_4:
                 .data.b h'01    ; enabled - cal val not set
-                .data.b h'30    ; ? ant  - active?   
-                .data.b 0       ; calibrate rot rate 0     
-                .data.b 0       ; calibrate rot rate 1     
-                .data.b 0       ; calibrate rot rate 2     
-                .data.b 0       ; calibrate rot rate 3     
-                .data.b 0       ; calibrate rot rate 4     
-                .data.b 0       ; calibrate rot rate 5     
-                .data.b 0       ; calibrate rot rate 6     
-                .data.b 0       ; calibrate rot rate 7     
-                .data.b 0       ; calibrate rot rate 8     
-                .data.b 0       ; calibrate rot rate 9     
-                .data.b 0       ; default rotation rate    
+                .data.b h'41    ; ? ant  - active?
+                .data.b 0       ; calibrate rot rate 0
+                .data.b 0       ; calibrate rot rate 1
+                .data.b 0       ; calibrate rot rate 2
+                .data.b 0       ; calibrate rot rate 3
+                .data.b 0       ; calibrate rot rate 4
+                .data.b 0       ; calibrate rot rate 5
+                .data.b 0       ; calibrate rot rate 6
+                .data.b 0       ; calibrate rot rate 7
+                .data.b 0       ; calibrate rot rate 8
+                .data.b 0       ; calibrate rot rate 9
+                .data.b 0       ; default rotation rate
         %IF KN6FW
-                .sdataz "AI6RE >"       ; str_prompt
-                .data.b 0
+                .sdataz "WB6YRU >"       ; str_prompt
+;                .data.b 0
                 .data.b 0 
  
         %ELSE 
@@ -11792,7 +11743,7 @@ FUNC_CUST_4:                    .EQU	h'74
                 .data.b 0		; current_lcda_filter
                 .data.b 0		; current_lcdr_filter
                 .data.b 0		; current_serial_filter
-                .data.b 0		; current_lrtone_filter                
+                .data.b 0		; current_lrtone_filter
 ;
                 .data.b 0               ; spare
                 .data.b BIT_RATE_4800   ; serial_rate1
@@ -11843,13 +11794,9 @@ FUNC_CUST_4:                    .EQU	h'74
                 .data.b 0               ; ctrl_byte_Dim_LED:
                 .data.b 0               ; ctrl_byte_BEARING_FORCE_SNOOP:
                 
-                .data.b 1               ; Bearing_print_flag:              
+                .data.b 1               ; Bearing_print_flag:
 		.data.b 0               ; 
-
-
-
-
-
+;
 eeprom_image_end:
 eeprom_image_size:              .equ    eeprom_image_end - eeprom_image
 
@@ -11923,7 +11870,8 @@ filt_0_output:                  .res.w  1
 filt_1_output:                  .res.w  1
 filt_2_output:                  .res.w  1
 filt_3_output:                  .res.w  1
-filt_4_output:			.res.w	1	
+filt_4_output:			.res.w	1
+filt_5_output:			.res.w	1
 
 ;
 filt_0_A_output:                .res.w  1
@@ -11931,8 +11879,9 @@ filt_1_A_output:                .res.w  1
 filt_2_A_output:                .res.w  1
 filt_3_A_output:                .res.w  1
 filt_4_A_output:                .res.w  1
+filt_5_A_output:                .res.w  1
 ;
-max_filter:			.equ	(filt_0_A_output - filt_0_output)
+max_filter:			.equ	(filt_5_output - filt_0_output)
 ;
 ;       This bucket aligns bearing with quality
 qsync_bucket_full_flag          .res.b  1
@@ -12196,7 +12145,8 @@ ctrl_byte_BEARING_FORCE_SNOOP:  .res.b  1
 
 bearing_print_flag:             .res.b  1
 				.res.b  1
-
+eeprom_ram_end:
+eeprom_ram_size:		.equ (eeprom_ram_end - eeprom_ram_start)
 ;
 fillerlabel:
 ;
@@ -12328,7 +12278,7 @@ lcd_rbearing:			.res.b	 3
 lcd_pointer_state:		.res.b   2
 				.res.b	 1 ; h'ff end flag
 				
-lcd_pointer:			.res.w	 1				
+lcd_pointer:			.res.w	 1
 
 
 gps_heading_dd:                 .res.b  1
@@ -12343,7 +12293,7 @@ sound_position:                 .res.b  1
 
 inp_len:                        .res.b  1
 
-inp_buf:                        .res.b  84 			
+inp_buf:                        .res.b  84
 inp_buf_end:			.res.b	2		; just in case of overrun
 inp_max:			.equ	(inp_buf_end - inp_buf)
 out_buf:                        .res.b  10
@@ -12375,8 +12325,10 @@ ant_one_flag:                   .res.b  1
 test_flag:                      .res.b  1
 GPRMC_string_flag:		.res.b	1
 GPRMC_Find_flag:		.res.b	1
-;init_done:			.res.b	1
-;output_busy_flag:		.res.b	1
+last_sent_Q:			.res.b	1
+Q_count:			.res.b	1
+filter_rot			.res.b	1
+				.res.b  1
 ;       Queue filtering.
 
 
