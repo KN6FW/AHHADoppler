@@ -1,6 +1,6 @@
 ; Set date at welcome_str:
 ;**********************************************************
-;    MicroFinder Doppler DF Set 
+;    MicroFinder Doppler DF Set
 ;    Hardware design and software upgrade by Rich Harrington, KN6FW
 ;    Original software by Michael J. Allison, KN6ZT
 ;**********************************************************
@@ -37,7 +37,9 @@
 ;	filt_3:					write_buffered_char2:
 ;	get_config_ptr:(r0l in - r0 out)	write_buffered_char_add:(r1l)
 ;	gps_speed_flag        			write_dec_word_add:(r1)
-;	Init_stuff:
+;	Init_stuff:				DD_to_LED:
+;	Display_8LED:				eeprom_image:
+;	cmd_multd:
 ;
 ;	Things to Fix or Do
 ;
@@ -346,6 +348,11 @@ DEBUG_FLAG                      .equ    1
 ;		- filter 4 = average to front raw to rear + Q
 ;		- button for Q Threshold 1 thru 5
 ;		- button for sample size for average 48, 96,144, 192, 240
+;	A2014-01-28
+;		- fixed Ant 1 flag
+;		- fixed hex input 0-9,A,F only
+;		- added byte barring + h'FQ
+;		- added 4 LED display
 ;
 ;*******************************************************************************
 ;
@@ -981,12 +988,12 @@ brk_counter:    .data.w 1               ; print break N times
 soft_brk:
                 push    r1
                 push    r0
-;               mov.w   @brk_counter,R1
-;               beq     soft_brk_1
-;               jmp     brk_exit        ; if count is zero
+               mov.w   @brk_counter,R1
+               bne     soft_brk_1
+               jmp     brk_exit        ; if count is zero
 soft_brk_1:
-;               dec     R1L
-;               mov.w   R1,@brk_counter
+               dec     R1L
+               mov.w   R1,@brk_counter
                 mov.w   #str_soft_brk,r1
                 jsr     @@write_buffered_str
                 mov.w   #6,r1
@@ -1613,29 +1620,28 @@ process_scheduler_start:                                        ; Idle Loop
                 jsr     rt_clock_change_sec                     ; Idle Loop
                 						; Idle Loop
 no_sec_change:                                                  ; Idle Loop
-                mov.b   @ant_one_flag,r1L                       ; Idle Loop
-                beq     ant_1_exit                              ; Idle Loop
-                cmp.b   #1,r1L                                  ; Idle Loop
-                beq     ant_1_ok                                ; Idle Loop
+                mov.b   @ant_one_flag,r1L                      	; Idle Loop
+                cmp.b	#2,r1l					; Idle Loop
+                bne     ant_1_exit                              ; Idle Loop
+;               bra     ant_1_ok                                ; Idle Loop
 ;       ant_one_flag gt 1                                       ; Idle Loop
-missed_ant_1:                                                   ; Idle Loop
-                mov.b   @Missed_1_flag_max,r1H                  ; Idle Loop
-                cmp     R1L,r1H                                 ; Idle Loop
-                bcs     ant_1_ok                                ; Idle Loop
-                mov.b   r1L,@Missed_1_flag_max          ; keep max
-                                                                ; Idle Loop
-                mov.w   #str_error_ant_1,r1                     ; Idle Loop
-                jsr     @@writeln_buffered_str                  ; Idle Loop
-                                                                ; Idle Loop
-                                                                ; Idle Loop
-ant_1_ok:                                                       ; Idle Loop
+;missed_ant_1:                                                  ; Idle Loop
+;                mov.b   @Missed_1_flag_max,r1H                 ; Idle Loop
+;                cmp     R1L,r1H                                ; Idle Loop
+;                bcs     ant_1_ok                               ; Idle Loop
+;                mov.b   r1L,@Missed_1_flag_max			; Idle Loop
+;                                                               ; Idle Loop
+;                mov.w   #str_error_ant_1,r1                    ; Idle Loop
+;                jsr     @@writeln_buffered_str                 ; Idle Loop
+;								; Idle Loop
+ant_1_ok:							; Idle Loop
                 mov.b   #0,r1L          ; Reset flag            ; Idle Loop
                 mov.b   r1L,@ant_one_flag                       ; Idle Loop
                 jsr     qsync_bucket_in                         ; Idle Loop
                                                                 ; Idle Loop
                 jsr     process_filters                         ; Idle Loop
 ant_1_exit:                                                     ; Idle Loop
-                mov.w #process_table,r6                         ; Idle Loop
+                mov.w 	#process_table,r6			; Idle Loop
                                                                 ; Idle Loop
 process_scheduler:
 ;pt_lcd:      	 .data.w         ps_lcd		; init_process (byte)
@@ -1862,7 +1868,6 @@ lcd_inst_load:				; Input r0l
 lcd_inst_send:		
 		mov.b	r0l,@port3_dr		; set  port3_dr data
 		bclr	#0,@port_8              ; bclr port_8 bit 0 instruction
-;		bclr	#1,@port_8              ; bclr port_8 bit 1 r/w
 		bset	#2,@port_8              ; bset port_8 bit 2 e 8 T states
 		nop
 		nop
@@ -1874,7 +1879,6 @@ lcd_inst_send:
 lcd_next_char:					; Data in r0l
 		mov.b	r0l,@port3_dr
 		bset	#0,@port_8		; data    
-		bclr	#1,@port_8    		; write
 		bset	#2,@port_8    		; e
 		nop
 		nop
@@ -2464,13 +2468,47 @@ write_word_add:
                 rts
 
 ;----------------------------------------------------------
-
+;
+;	Convert DD to LED8
+;
+;	Input R0l filter number
+;
+;	output	r01 and r0h from table or 07
+;		if 07
+;		r0l = 07
+;		r0h = 70
+;
 ;----------------------------------------------------------
-
-
-
-
-
+;
+DD_to_LED:
+		mov.w	#filt_0_output,r1
+		mov.b	#0,r0h
+		shal	r0l			; Words
+		add.w	r0,r1			; Now points to data
+		mov.w	@r1,r0			; Now have DD from selected filter
+		cmp.b	#51,r0l
+		bls	DD_to_LED_table
+		cmp.b	#148,r0l
+		bhs	DD_to_LED_table2
+		mov.b	#h'07,r0l
+		bra	DD_to_LED_exit
+;
+DD_to_LED_table2:		
+		add.b	#256 - 96,r0l		; need to adjust for entry
+;						; in to table 148 becomes 52		
+DD_to_LED_table:
+		mov.w	#LED8_table,r1
+		add.w	r0,r1
+		mov.b	@r1,r0l
+DD_to_LED_exit:
+		mov.b	r0l,r0h
+		rotr	r0h
+		rotr	r0h
+		rotr	r0h
+		rotr	r0h
+		rts							
+;
+;
 qsync_bucket_setup:
                 mov.b   #1,r1L
                 mov.b   r1L,@qsync_bucket_full_flag
@@ -5402,19 +5440,31 @@ oc1b_srvc:                                                                      
                                                                                 ; ISR
 ;       Only queue the signal once per rotation.                                ; ISR
                                                                                 ; ISR
-isr_check_ant_1:                                                                ; ISR
-                cmp.b   #1,r1h                                                  ; ISR
-                bne     isr_not_antenna_one                                     ; ISR
-                mov.b   @ant_one_flag,R2L                                       ; ISR
-                inc     R2L                                                     ; ISR
-                                                                                ; ISR
-;       if this gets to 2 oops                                                  ; ISR
-                                                                                ; ISR
-                mov.b   R2L,@ant_one_flag                                       ; ISR
-                                                                                ; ISR
-;       Antenna 1 flag is for everything that                                   ; ISR
-;       has to be once per revolution.                                          ; ISR
-;       But do it outside the int service routine!                              ; ISR
+isr_check_ant_1:
+		mov.b	@tenna_port,r2l						; ISR
+										; ISR
+		and	#h'0f,r2l                                               ; ISR
+		cmp.b	#h'0e,r2l		; is it active low ant1?        ; ISR
+		beq	ant1_active                                             ; ISR
+		cmp.b	#1,r2l			; is it active high ant1?       ; ISR
+		beq	ant1_active                                             ; ISR
+		mov.b	@ant_one_flag,r2l                                       ; ISR
+		beq     isr_not_antenna_one                                     ; ISR
+check_end_pulse:                                                                ; ISR
+		mov.b	@tenna_port,r2l						; ISR
+		and	#h'0f,r2l                                               ; ISR
+		cmp.b	#h'0d,r2l		; is low over ant1?             ; ISR
+		beq	ant1_over						; ISR
+		cmp.b	#2,r2l			; is high over ant1?            ; ISR
+		bne     isr_not_antenna_one                                     ; ISR
+ant1_over:                                                                      ; ISR
+		mov.b	#2,r2l                                                  ; ISR
+		mov.b	r2l,@ant_one_flag	; flag as over                  ; ISR
+		bra	isr_not_antenna_one                                     ; ISR
+ant1_active:                                                                    ; ISR
+		mov.b	#1,r2l                                                  ; ISR
+		mov.b	r2l,@ant_one_flag	; flag as active                ; ISR
+;		bra	isr_not_antenna_one                                     ; ISR
                                                                                 ; ISR
 isr_not_antenna_one:                                                            ; ISR
                 mov.b   @tenna_port,r1h                                         ; ISR
@@ -6031,6 +6081,7 @@ filt_4_done:
 filt_4_exit:
 ;
 filt_5:
+;	bset	#1,@port_8
 		mov.b	@filter_rot,r1l
 		inc	r1l
 		inc	r1l
@@ -6056,11 +6107,196 @@ filt_5_A:
 						; depending on filter_rot
 		mov.w	@r0,r1			; now have bearing from a filter
 		mov.w	r1,@filt_5_A_output
+;	bclr	#1,@port_8		
 				
-		rts
+;		rts
 ;
 ; ---------------------------------------------------------
+;
+Display_8LED:
+;
+;	Now that we have all filters data renewed
+;	lets put it out to the LED8 display
+;	There are 4 displays outer RED, outer GREEN, iner RED, and iner GREEN
+;	RED uper nibble, GREEN lower nibble
+;	Requires Odd and Even bytes for the outer and iner port 3
+;	Positive transition clock on P81 for outer
+;	Negitive transition clock on P81 for iner    
+;
+;	LED8_out_odd:		.res.b	1
+;	LED8_out_even:		.res.b	1
+;	LED8_iner_odd:		.res.b	1
+;	LED8_iner_even:		.res.b	1
+;
+; 	LED8_out_RED:		.data.b  1	  
+;	LED8_out_GREEN:		.data.b  2
+;	LED8_iner_RED:		.data.b  3
+;	LED8_iner_GREEN:	.data.b  4
+;
+;DD_to_LED
+;	Convert DD to LED8
+;	Input R0l filter number
+;	output	r01 and r0h from table or 07
+;
+; ---------------------------------------------------------
+;	
+;	; Example
+;			output 07 for RED outer - high nibble Flip-flop = 0
+;		for even
+;			required result 0000 ----
+;		for odd
+;			required result 0111 ----
+;
+;			output 12 for GREEN outer low  nibble Flip-flop = 0
+;		for even
+;			required result ---- 0001
+;		for odd
+;			required result ---- 0010
+;
+;			output 34 for RED iner - high nibble Flip-flop = 1
+;		for even
+;			required result  0011 ----
+;		for odd
+;			required result  0100 ----
+;
+;			output 56 for GREEN iner low  nibble Flip-flop = 1
+;		for even
+;			required result ---- 0101
+;		for odd
+;			required result ---- 0110
+;	outer latch
+;		for even		RED  GREEN
+;			required result 0000 0001	Flip-flop = 0
+;		for odd
+;			required result 0111 0010	Flip-flop = 1
+;	iner latch
+;		for even
+;			required result 0011 0101	Flip-flop = 0
+;		for odd
+;			required result 0100 0110	Flip-flop = 1
+;
+;	Flip_flop = 0    RED GREEN     RED  GREEN
+;	   even positive clock	      |--------------------- Display 1 (07)
+;			0000 0001     --0      1 outer
+;	   even negitive clock        |             |
+;			0011 0101     | 3    --5    |------- Display 2 (12)
+;	Flip_flop = 1		      |  \   |      |
+;	   odd  positive clock	      |   \  |      |
+;			0111 0010     --7 /  | 2 outer
+;	   odd  negitive clock		 /   |
+;			0400 0110	4     --6 iner------ Display 4 (56
+;					|------------------- Display 3 (34)
+;
+;	Data from display 1 goes in LED8_out_even  HN & LED8_out_odd HN
+;	Data from display 2 goes in LED8_out_even  LN & LED8_out_odd LN
+;	Data from display 3 goes in LED8_even_even HN & LED8_iner_odd HN
+;	Data from display 4 goes in LED8_enen_even LN & LED8_iner_odd LN
+;
+;		LED8_out_odd	= 72
+;		LED8_out_even	= 01
+;		LED8_iner_odd	= 46
+;		LED8_iner_even  = 35	
+;
+		mov.b	@LED8_out_RED,r0l	; Display 1
+		jsr	DD_to_LED
+						; if 07
+						; r0l = 07
+						; r0h = 70
+						; need to place
+						; r0l in LED8_out_even HN 
+						; r0h in LED8_out_odd  HN
+		and.b	#h'0f0,r0h
+		and.b	#h'0f0,r0l
+		mov.b	@LED8_out_even,r1l
+		and.b	#h'0f,r1l
+		mov.b	@LED8_out_odd,r1h
+		and.b	#h'0f,r1h
+		or	r0l,r1l
+		or	r0h,r1h
+		mov.b	r1l,@LED8_out_even
+		mov.b	r1h,@LED8_out_odd
 
+
+;
+		mov.b	@LED8_out_GREEN,r0l	; Display 2
+		jsr	DD_to_LED
+						; need to place
+						; LN in LED8_out_even LN 
+						; HN in LED8_out_odd  LN
+		and.b	#h'0f,r0h
+		and.b	#h'0f,r0l
+		mov.b	@LED8_out_even,r1l
+		and.b	#h'0f0,r1l
+		mov.b	@LED8_out_odd,r1h
+		and.b	#h'0f0,r1h
+		or	r0l,r1l
+		or	r0h,r1h
+		mov.b	r1l,@LED8_out_even
+		mov.b	r1h,@LED8_out_odd
+
+; Now do iner display
+		mov.b	@LED8_iner_RED,r0l	; Display 3
+		jsr	DD_to_LED
+						; need to place
+						; LN in LED8_out_even HN 
+						; HN in LED8_out_odd  HN
+		and.b	#h'0f0,r0h
+		and.b	#h'0f0,r0l
+		mov.b	@LED8_iner_even,r1l
+		and.b	#h'0f,r1l
+		mov.b	@LED8_iner_odd,r1h
+		and.b	#h'0f,r1h
+		or	r0l,r1l
+		or	r0h,r1h
+		mov.b	r1l,@LED8_iner_even
+		mov.b	r1h,@LED8_iner_odd
+;
+		mov.b	@LED8_iner_GREEN,r0l
+		jsr	DD_to_LED
+						; need to place
+						; LN in LED8_out_even LN 
+						; HN in LED8_out_odd  LN
+		and.b	#h'0f,r0h
+		and.b	#h'0f,r0l
+		mov.b	@LED8_iner_even,r1l
+		and.b	#h'0f0,r1l
+		mov.b	@LED8_iner_odd,r1h
+		and.b	#h'0f0,r1h
+		or	r0l,r1l
+		or	r0h,r1h
+		mov.b	r1l,@LED8_iner_even
+		mov.b	r1h,@LED8_iner_odd
+;
+; ---------------------------------------------------------
+;
+;FlipFlop:
+	mov.b	@FlipFlop,r1h
+	beq	FlipFlop_was_0
+					; must have been non zero
+	mov.b	#0,r1h
+	mov.b	r1h,@FlipFlop
+					; do odd
+	mov.b	@LED8_out_odd,r0l
+	mov.b	r0l,@port3_dr
+	bset	#1,@port_8		; Pos clock outer
+	mov.b	@LED8_iner_odd,r0l
+	mov.b	r0l,@port3_dr
+	bclr	#1,@port_8
+		rts
+flipFlop_was_0:
+	inc	r1h
+	mov.b	r1h,@FlipFlop
+					; do even
+	mov.b	@LED8_out_even,r0l
+	mov.b	r0l,@port3_dr
+	bset	#1,@port_8		; pos clock iner
+	mov.b	@LED8_iner_even,r0l
+	mov.b	r0l,@port3_dr
+	bclr	#1,@port_8
+	rts
+;		
+; ---------------------------------------------------------
+;
 ;       Given a rotation rate 0-9, set the time base value
 ;       Time base from 8 bit timer #1
 ;       Rate is 0-9 in r1l
@@ -6083,14 +6319,14 @@ set_rotation_done:
                 adds    #2,r0                   ; Skip past enable/
 						; disable & antenna
 		mov.b	@current_rotation_rate,r1l
-		mov.b	#0,r1h				
+		mov.b	#0,r1h
                 add.w   r0,r1
                 mov.b   @r1,r0l
                 mov.b   r0l,@calibration
                 rts
 ;
 ; ---------------------------------------------------------
-
+;
 ;       Set up the antenna table based on the argument passed in r1l
 ;       A side effect is to place this value in memory.
 
@@ -6107,7 +6343,7 @@ set_antenna_4:
                 bne     set_antenna_6
                 mov.w   #antenna_4_isr,r5
                 bra     set_antenna_exit
-                
+;
 set_antenna_6:
                 cmp.b   #h'60,r1l
                 bne     set_antenna_8
@@ -7203,7 +7439,6 @@ update_data_4_pointer:
                 mov.w   #filt_0_output,r1
                 add.w   r0,r1                           ; filter output data address
                 mov.w   #data_4_ptr,r0
-;                .data.w h'5770
                 mov.w   r1,@r0				; trouble in here
 		rts               
 ;
@@ -9351,7 +9586,54 @@ cmd_ledto_exit:
 cmd_ledto_fail:
                 mov.w   #str_missing_arg,r1
                 jmp     @@writeln_buffered_str
+;
+cmd_multd:
+		mov.w   #inp_buf,r1
+                jsr     cmd_skip_token
+                beq     cmd_multd_check_arg
 
+cmd_multd_show:
+                mov.b   @LED8_out_RED,r1l
+                mov.b   #0,r1h
+                jsr     @@write_dec_word
+                mov.b   @LED8_out_GREEN,r1l
+                mov.b   #0,r1h
+                jsr     @@write_dec_word
+                mov.b   @LED8_iner_RED,r1l
+                mov.b   #0,r1h
+                jsr     @@write_dec_word
+                mov.b   @LED8_iner_GREEN,r1l
+                mov.b   #0,r1h
+                jsr     @@write_dec_word
+                mov.w   #eol_str,r1
+                jmp     @@write_buffered_str
+
+cmd_multd_check_arg:
+                jsr     read_dec_word		; r1 in r0 ret
+                cmp.b   #max_filter/2 - 1,r0l 
+                bhi     cmd_multd_bad
+		mov.b	r0l,@LED8_out_RED
+		jsr     read_dec_word		; r1 in r0 ret
+                cmp.b   #max_filter/2 - 1,r0l 
+                bhi     cmd_multd_bad
+		mov.b	r0l,@LED8_out_GREEN
+		jsr     read_dec_word		; r1 in r0 ret
+                cmp.b   #max_filter/2 - 1,r0l 
+                bhi     cmd_multd_bad
+		mov.b	r0l,@LED8_iner_RED
+		jsr     read_dec_word		; r1 in r0 ret
+                cmp.b   #max_filter/2 - 1,r0l 
+                bhi     cmd_multd_bad
+		mov.b	r0l,@LED8_iner_GREEN
+                rts
+
+cmd_multd_bad:
+                mov.w   #str_multd_high,r1
+                jmp     @@writeln_buffered_str
+cmd_multd_exit:
+                rts
+
+;
 ;       Set the owner`s call.
 
 cmd_mycall:
@@ -10089,124 +10371,160 @@ st_8:           .data.w h'AD9D	; 1010 1101  1001 1101  1001  1100
 ;
 ;	To allow 2 leds on at the "same time"
 ;       and to keep the same intensity hex F = off.
-;	Each byte in the table has a High and Low nible
+;	Each byte in the table has a High and Low nibble
 ;	to display 0 degrees both 3 and 4 must be on.
-;	the driver will alternate between High and Low nible.
+;	the driver will alternate between High and Low nibble.
 ;	To keep the same intensity 5.4 degrees will switch between 4 and F.
 ;	as a special case 270 and 90 degrees will tuen on 0 or 7 at full intensity.
 ;	After 90 and before 270 both 0 and 7 will be on to indicate it's behind you.
 ;	This range will be calculated to shorten the table.
 ;
+; Data for LED8 displays
+;		RED uper nibble	GREEN lower nibble
+;		Positive going clock (P81) for outer LEDS
+;		Negitive for the iner LEDS
+;		Information from table needs to be converted 
+;		from high and low nibble to be inserted into
+;		odd-even byte for the correct display
+;
+;	LED8_out_odd:			.res.b	1
+;	LED8_out_even:			.res.b	1
+;	LED8_iner_odd:			.res.b	1
+;	LED8_iner_even:			.res.b	1
+;
+; Used by command to assign witch filter to which display
+;	.data.b  0		; LED8_out_RED
+;	.data.b  1		; LED8_out_GREEN
+;	.data.b  2		; LED8_iner_red
+;	.data.b  3		; LED8_iner_GREEN
+;
+; Example:
+;	DD from filter 0 = 194 result from table = 23 hex
+;	DD from filter 1 = 7   result from table = 45 hex
+; Start by placing the 23 in LED8_out_odd:
+; and the 45 in LED8_out_even: 
+; Bit manipulation required to put the 3 of 23 in the 
+; uper nibble of LED8_out_odd:
+; and the 4 of 45 in the lower nibble of LED8_out_even:
+;
+; Result:
+; 	LED8_out_odd:  = 24 
+;	LED8_out_even: = 35
+;
+; This needs to be done after all the filters have new values
+;
+;
 ; ---------------------------------------------------------
 ;
-LED_8_table:
-							; doppler degrees
-		
-                .data.b  h'34				; 000
-		.data.b  h'34				; 001
-		.data.b  h'f4				; 002
-		.data.b  h'f4				; 003
-		.data.b  h'f4				; 004
-		.data.b  h'f0				; 005
-		.data.b  h'f0				; 006
-		.data.b  h'f0				; 007
-		.data.b  h'f0				; 008
-		.data.b  h'f0				; 009
-		.data.b  h'f0				; 010
-		.data.b  h'f0				; 011
-		.data.b  h'f0				; 012
-		.data.b  h'f0				; 013
-		.data.b  h'f0				; 014
-		.data.b  h'f0				; 015
-		.data.b  h'f0				; 016
-		.data.b  h'f0				; 017
-		.data.b  h'f0				; 018
-		.data.b  h'f0				; 019
-		.data.b  h'f0				; 020
-		.data.b  h'f0				; 021
-		.data.b  h'f0				; 022
-		.data.b  h'f0				; 023
-		.data.b  h'f0				; 024
-		.data.b  h'f0				; 025
-		.data.b  h'f0				; 026
-		.data.b  h'f0				; 027
-		.data.b  h'f0				; 028
-		.data.b  h'f0				; 029
-		.data.b  h'f0				; 030
-		.data.b  h'f0				; 031
-		.data.b  h'f0				; 032
-		.data.b  h'f0				; 033
-		.data.b  h'f0				; 034
-		.data.b  h'f0				; 035
-		.data.b  h'f0				; 036
-		.data.b  h'f0				; 037
-		.data.b  h'f0				; 038
-		.data.b  h'f0				; 039
-		.data.b  h'f0				; 040
-		.data.b  h'f0				; 041
-		.data.b  h'f0				; 042
-		.data.b  h'f0				; 043
-		.data.b  h'f0				; 044
-		.data.b  h'f0				; 045
-		.data.b  h'f0				; 046
-		.data.b  h'f0				; 047
-		.data.b  h'77				; 048
-		.data.b  h'77				; 049
-		.data.b  h'77				; 050
-		.data.b  h'77				; 051
+LED8_table:
+			; doppler degrees
+	
+	.data.b  h'34	; 000
+	.data.b  h'34	; 001
+	.data.b  h'4f	; 002
+	.data.b  h'4f	; 003
+	.data.b  h'4f	; 004
+	.data.b  h'45	; 005
+	.data.b  h'45	; 006
+	.data.b  h'45	; 007
+	.data.b  h'45	; 008
+	.data.b  h'45	; 009
+	.data.b  h'5f	; 010
+	.data.b  h'5f	; 011
+	.data.b  h'5f	; 012
+	.data.b  h'5f	; 013
+	.data.b  h'5f	; 014
+	.data.b  h'5f	; 015
+	.data.b  h'5f	; 016
+	.data.b  h'56	; 017
+	.data.b  h'56	; 018
+	.data.b  h'56	; 019
+	.data.b  h'56	; 020
+	.data.b  h'56	; 021
+	.data.b  h'56	; 022
+	.data.b  h'6f	; 023
+	.data.b  h'6f	; 024
+	.data.b  h'66	; 025
+	.data.b  h'6f	; 026
+	.data.b  h'6f	; 027
+	.data.b  h'6f	; 028
+	.data.b  h'6f	; 029
+	.data.b  h'67	; 030
+	.data.b  h'67	; 031
+	.data.b  h'67	; 032
+	.data.b  h'67	; 033
+	.data.b  h'67	; 034
+	.data.b  h'67	; 035
+	.data.b  h'7f	; 036
+	.data.b  h'7f	; 037
+	.data.b  h'7f	; 038
+	.data.b  h'7f	; 039
+	.data.b  h'7f	; 040
+	.data.b  h'7f	; 041
+	.data.b  h'7f	; 042
+	.data.b  h'7f	; 043
+	.data.b  h'7f	; 044
+	.data.b  h'7f	; 045
+	.data.b  h'7f	; 046
+	.data.b  h'7f	; 047
+	.data.b  h'7f	; 048
+	.data.b  h'77	; 049
+	.data.b  h'77	; 050
+	.data.b  h'77	; 051
+;		 h'07	; 052 - 147
 ;
-		.data.b  h'00				; 148
-		.data.b  h'00				; 149
-		.data.b  h'00				; 150
-		.data.b  h'00				; 151
-		.data.b  h'00				; 152
-		.data.b  h'f0				; 153
-		.data.b  h'f0				; 154
-		.data.b  h'f0				; 155
-		.data.b  h'f0				; 156
-		.data.b  h'f0				; 157
-		.data.b  h'f0				; 158
-		.data.b  h'f0				; 159
-		.data.b  h'f0				; 160
-		.data.b  h'f0				; 161
-		.data.b  h'f0				; 162
-		.data.b  h'f0				; 163
-		.data.b  h'f0				; 164
-		.data.b  h'f0				; 165
-		.data.b  h'f0				; 166
-		.data.b  h'f0				; 167
-		.data.b  h'f0				; 168
-		.data.b  h'f0				; 169
-		.data.b  h'f0				; 170
-		.data.b  h'f0				; 171
-		.data.b  h'f0				; 172
-		.data.b  h'f0				; 173
-		.data.b  h'f0				; 174
-		.data.b  h'f0				; 175
-		.data.b  h'f0				; 176
-		.data.b  h'f0				; 177
-		.data.b  h'f0				; 178
-		.data.b  h'f0				; 179
-		.data.b  h'f0				; 180
-		.data.b  h'f0				; 181
-		.data.b  h'f0				; 182
-		.data.b  h'f0				; 183
-		.data.b  h'f0				; 184
-		.data.b  h'f0				; 185
-		.data.b  h'f0				; 186
-		.data.b  h'f0				; 187
-		.data.b  h'f0				; 188
-		.data.b  h'f0				; 189
-		.data.b  h'f0				; 190
-		.data.b  h'f0				; 191
-		.data.b  h'f0				; 192
-		.data.b  h'f0				; 193
-		.data.b  h'f0				; 194
-		.data.b  h'f0				; 195
-		.data.b  h'f0				; 196
-		.data.b  h'f0				; 197
-		.data.b  h'f0				; 198
-		.data.b  h'f0				; 199
+	.data.b  h'00	; 148	77	51
+	.data.b  h'00	; 149	77	50
+	.data.b  h'00	; 150	77	49
+	.data.b  h'0f	; 151	7f	48
+	.data.b  h'0f	; 152	7f	47
+	.data.b  h'0f	; 153	7f	46
+	.data.b  h'0f	; 154	7f	45
+	.data.b  h'0f	; 155	7f	44
+	.data.b  h'0f	; 156	7f	43
+	.data.b  h'0f	; 157	7f	42
+	.data.b  h'0f	; 158	7f	41
+	.data.b  h'0f	; 159	7f	40
+	.data.b  h'0f	; 160	7f	39
+	.data.b  h'0f	; 161	7f	38
+	.data.b  h'0f	; 162	7f	37
+	.data.b  h'0f	; 163	7f	36
+	.data.b  h'01	; 164	67	35
+	.data.b  h'01	; 165	67	34
+	.data.b  h'01	; 166	67	33
+	.data.b  h'01	; 167	67	32
+	.data.b  h'01	; 168	67	31
+	.data.b  h'01	; 169	67	30
+	.data.b  h'1f	; 170	6f	29
+	.data.b  h'1f	; 171	6f	28
+	.data.b  h'1f	; 172	6f	27
+	.data.b  h'1f	; 173	6f	26
+	.data.b  h'11	; 174	66	25
+	.data.b  h'1f	; 175	6f	24
+	.data.b  h'1f	; 176	6f	23
+	.data.b  h'12	; 177	56	22
+	.data.b  h'12	; 178	56	21
+	.data.b  h'12	; 179	55	20
+	.data.b  h'12	; 180	56	19
+	.data.b  h'12	; 181	56	18
+	.data.b  h'12	; 182	56	17
+	.data.b  h'2f	; 183	5f	16
+	.data.b  h'2f	; 184	5f	15
+	.data.b  h'2f	; 185	5f	14
+	.data.b  h'2f	; 186	5f	13
+	.data.b  h'2f	; 187	5f	12
+	.data.b  h'2f	; 188	5f	11
+	.data.b  h'2f	; 189	5f	10
+	.data.b  h'23	; 190	45	09
+	.data.b  h'23	; 191	45	08
+	.data.b  h'23	; 192	45	07
+	.data.b  h'23	; 193	45	06
+	.data.b  h'23	; 194	45	05
+	.data.b  h'3f	; 195	4f	04
+	.data.b  h'3f	; 196	4f	03
+	.data.b  h'3f	; 197	4f	02
+	.data.b  h'34	; 198	34	01
+	.data.b  h'34	; 199	34	00
 ;	
 ; ---------------------------------------------------------
 ;
@@ -10571,6 +10889,11 @@ cli_cmd_table:
                 .data.w cmd_str_ledto
                 .data.w cmd_ledto
                 .data.w cmd_help_ledto
+;       multd
+                .data.w cmd_str_multd
+                .data.w cmd_multd
+                .data.w cmd_help_multd                
+                
 
 ;       mycall
                 .data.w cmd_str_mycall
@@ -10742,7 +11065,7 @@ welcome_str:
  .sdata  "*       AHHA! Solutions         *\n\r"
  .sdata  "*   KE6GDD KE6GDH KN6FW KN6ZT   *\n\r"
  .sdata  "*                               *\n\r"
- .sdata  "*  Version FW1.2    2014-01-20  *\n\r"
+ .sdata  "*  Version FW1.3    2014-01-28  *\n\r"
  .sdataz "*********************************\n\r"
 ;
 str_lcd_line1:
@@ -10952,6 +11275,8 @@ str_addr_not_in_range:
                         .sdataz "Address is not in range"
 str_missing_arg:
                         .sdataz "Missing value for command"
+str_multd_high:
+			.sdataz "Value exceeds maximum"                       
 str_compass_error:
                         .sdataz "Compass error"
 str_value_not_in_range:
@@ -11295,6 +11620,10 @@ cmd_str_ledto:
                         .sdataz "l*edto"
 cmd_help_ledto:
                         .sdataz "Dledto     #            Light LED 0..200"
+cmd_help_multd:
+                        .sdataz "Umultd     # # # #      Show or set filter to LED8 display"
+cmd_str_multd:
+                        .sdataz "mu*ltd"                        
 cmd_str_mycall:
                         .sdataz "my*call"
 cmd_str_reset:
@@ -11544,11 +11873,11 @@ bstr_func_4:
 ;
 ; *******************************************************************
 ;
-                .res.b  h'1c            ; Manual set for debug to
+                .res.b  h'2e            ; Manual set for debug to
                 .data.w 1               ; keep eeprom image on even boundry
 ;
 eeprom_image:
-                .data.w h'f002          ; ver_number
+                .data.w h'f003          ; ver_number
 ;       init_processes
                 .data.b 1               ; ps_serial_in          on
                 .data.b 2		; ps_lcd		sleep
@@ -11667,7 +11996,7 @@ FUNC_CUST_4:                    .EQU	h'74
 ;
 ;config_2:
                 .data.b h'01    ; enabled - cal val not set
-                .data.b h'61    ; ? ant  - active?
+                .data.b h'61    ; 6 ant  - active high
                 .data.b 0       ; calibrate rot rate 0
                 .data.b 0       ; calibrate rot rate 1
                 .data.b 0       ; calibrate rot rate 2
@@ -11682,7 +12011,7 @@ FUNC_CUST_4:                    .EQU	h'74
 ;
 ;config_3:
                 .data.b h'01    ; enabled - cal val not set
-                .data.b h'81    ; ? ant  -  active?
+                .data.b h'81    ; 8 ant  -  active high
                 .data.b 0       ; calibrate rot rate 0
                 .data.b 0       ; calibrate rot rate 1
                 .data.b 0       ; calibrate rot rate 2
@@ -11696,7 +12025,7 @@ FUNC_CUST_4:                    .EQU	h'74
                 .data.b 0       ; default rotation rate
 ;config_4:
                 .data.b h'01    ; enabled - cal val not set
-                .data.b h'41    ; ? ant  - active?
+                .data.b h'41    ; 4 ant  - active high
                 .data.b 0       ; calibrate rot rate 0
                 .data.b 0       ; calibrate rot rate 1
                 .data.b 0       ; calibrate rot rate 2
@@ -11775,27 +12104,37 @@ FUNC_CUST_4:                    .EQU	h'74
 
                 .data.b 0               ; GPS_capture_flag:
                 .data.b 0               ; GPS_capture_flag_SNOOP_PENDING:
-
+;
                 .data.b 0               ; GPS_echo_flag:
                 .data.b 0               ; ctrl_byte_APRS_LIMIT:
- 
+;
                 .data.b 0               ; ctrl_byte_Old_APRS_compat:
                 .data.b 0               ; ctrl_byte_Snoop_pending:
- 
+;
                 .data.b 1               ; current_Threshold
                 .data.b 1               ; ctrl_byte_Start_tone:
-
+;
                 .data.b 0               ; ctrl_byte_Button_click:
                 .data.b 1               ; ctrl_byte_Pointer_avail:
-                
+;
                 .data.b 0               ; pointer_abs_flag:
                 .data.b 0               ; LED_abs_flag:
-
+;
                 .data.b 0               ; ctrl_byte_Dim_LED:
                 .data.b 0               ; ctrl_byte_BEARING_FORCE_SNOOP:
-                
-                .data.b 1               ; Bearing_print_flag:
-		.data.b 0               ; 
+;
+		.res.b  1		; bearing_print_flag:
+					; Which of the 4 LED  
+					; displays will filter
+					; display on
+;
+ 		.data.b  1		; LED8_out_RED:	
+;
+		.data.b  2		; LED8_out_GREEN:
+		.data.b  3		; LED8_iner_RED:
+;
+		.data.b  4		; LED8_iner_GREEN:
+		.data.b  0		; spare
 ;
 eeprom_image_end:
 eeprom_image_size:              .equ    eeprom_image_end - eeprom_image
@@ -11804,7 +12143,7 @@ eeprom_image_size:              .equ    eeprom_image_end - eeprom_image
 
 
 end_str:                        .data.w h'dead
-                        .data.w h'beef
+                        	.data.w h'beef
 
 
 
@@ -12131,7 +12470,7 @@ ctrl_byte_APRS_LIMIT:           .res.b  1
 ctrl_byte_Old_APRS_compat:      .res.b  1
 ctrl_byte_Snoop_pending:        .res.b  1
 
-current_Threshold:		.res.b  1	; spare
+current_Threshold:		.res.b  1
 ctrl_byte_Start_tone:           .res.b  1
 
 ctrl_byte_Button_click:         .res.b  1
@@ -12144,7 +12483,14 @@ ctrl_byte_Dim_LED:              .res.b  1
 ctrl_byte_BEARING_FORCE_SNOOP:  .res.b  1
 
 bearing_print_flag:             .res.b  1
-				.res.b  1
+LED8_out_RED:			.res.b  1	; Which filter  
+						; witch display
+LED8_out_GREEN:			.res.b  1
+LED8_iner_RED:			.res.b  1
+				
+LED8_iner_GREEN:		.res.b  1
+				.res.b  1								
+				
 eeprom_ram_end:
 eeprom_ram_size:		.equ (eeprom_ram_end - eeprom_ram_start)
 ;
@@ -12329,10 +12675,14 @@ last_sent_Q:			.res.b	1
 Q_count:			.res.b	1
 filter_rot			.res.b	1
 				.res.b  1
+;
+LED8_out_odd:			.res.b	1
+LED8_out_even:			.res.b	1
+LED8_iner_odd:			.res.b	1
+LED8_iner_even:			.res.b	1
+FlipFlop:			.res.b  1
+				
 ;       Queue filtering.
-
-
-
 
 no_more:
 fence_ram_end:
