@@ -1,9 +1,10 @@
 ; Set date at welcome_str:
-;**********************************************************
-;    MicroFinder Doppler DF Set
-;    Hardware design and software upgrade by Rich Harrington, KN6FW
-;    Original software by Michael J. Allison, KN6ZT
-;**********************************************************
+;
+;       Set this value to 1 for development, 0 to production.
+DEVELOP_ASM                     .EQU    0
+
+;       Set to 1 if you are KN6FW else 0
+KN6FW                           .equ    1
 ;
 ;       TO FIND THINGS
 ;
@@ -11,6 +12,7 @@
 ;	@@write_word:(r1)			low_speed_GPS:
 ;	@GPS_capture_flag                       LED_8_table:
 ;	@gps_heading				LED_do_slow:
+;	ant_one_flag
 ;	bt_attract:                             main_play_not_so_good_tone:
 ;	Button Function Desription Strings	Parse_GPS:
 ;	button_calibrate:			p_calibrate:
@@ -19,6 +21,7 @@
 ;	button_rot:				p_led_ring_do_display:
 ;	calibration				p_led_ring_display:
 ;	cli_cmd_table:				p_serial_in:
+;	cmd_baud:
 ;	cmd_baud_show_19:			p_serial_output2:
 ;	cmd_eedump:				p_stepper_driver:
 ;	cmd_eeprom_restore:			raw_store:
@@ -39,7 +42,7 @@
 ;	gps_speed_flag        			write_dec_word_add:(r1)
 ;	Init_stuff:				DD_to_LED:
 ;	Display_8LED:				eeprom_image:
-;	cmd_multd:
+;	cmd_multd:				.data.w h'5770
 ;
 ;	Things to Fix or Do
 ;
@@ -47,7 +50,12 @@
 ;	Next time DD 99 or 100 to front. It makes filters easier.
 ;	Layout with one led at 0 degrees also makes 45 degrees one LED.
 ;
-;	.data.w h'5770
+;**********************************************************
+;    MicroFinder Doppler DF Set
+;    Hardware design and software upgrade by Rich Harrington, KN6FW
+;    Original software by Michael J. Allison, KN6ZT
+;**********************************************************
+;
 ;
 ;	Filter
 ;	Average with point within + or - 50 DD
@@ -56,6 +64,20 @@
 ;		as Q ranges from 1 to 4
 ;		change speed.
 ;		Keep the lower timer value value
+;
+; Now have 2 DD-Q outputs
+; comm0 or Command port & 
+; comm1 the "extra port" GPS in for compass
+; comm0_A1_flag and
+; comm1_A1_flag 
+; used to send DD-Q only once per doppleer ant rotation
+; Command port is turned on by the command rawon rawon_flag = 1
+;             and turned off by any char into the command port
+;	      rawon_flag = 0
+;
+;       Only going to send characters if there any to send
+;       and the output uart is ready.
+;
 ;
 ;	GPS on second serial port
 ;		Build a small FIFO 15 char to allow sending %RRR.R/Q%HHH (EOL)
@@ -80,17 +102,6 @@
 ;		mov.b	r1l,@port3_dr
 ;		bclr	#7,@port_6		; display on hex test
 ;		bset	#7,@port_6
-;
-;**********************************************************
-;       Assembly        flags
-;**********************************************************
-;
-;       Set this value to 1 for development, 0 to production.
-DEVELOP_ASM                     .EQU    0
-;       Set to 1 if you are KN6FW else 0
-KN6FW                           .equ    1
-;       Set to 1 if debug else 0
-DEBUG_FLAG                      .equ    1
 ;
 ;       ---------------------------------------------------
 ;       (c) Copyright 1993-2012 AHHA! Solutions
@@ -353,6 +364,11 @@ DEBUG_FLAG                      .equ    1
 ;		- fixed hex input 0-9,A,F only
 ;		- added byte barring + h'FQ
 ;		- added 4 LED display
+;	A2014-02-23
+;		- added opt to turn on or off LCD display
+;		- added opt to turn on or off 4 LED display
+;		- cleaned up opt command
+;		- added rawon command
 ;
 ;*******************************************************************************
 ;
@@ -984,7 +1000,7 @@ fence_core_start:
 ;       at the end of this routine
 
 brk_counter:    .data.w 1               ; print break N times
-
+;				.data.w h'5770
 soft_brk:
                 push    r1
                 push    r0
@@ -1118,7 +1134,7 @@ Init_stuff:
 
                 mov.b   #h'AF,r0l
                 mov.b   r0l,@port_8_ddr
-;                
+;
 		mov.w	#4,r1
 		mov.w	r1,@rt_sec_uart_turn_on
                 mov.w   #eeprom_image,r5        ; From
@@ -1134,22 +1150,22 @@ Init_stuff:
                 mov.w	r4,@lcd_pointer		; set pointer to start
                 mov.b	#h'81,r0l
                 jsr	lcd_inst_load
-;                                
+;
                 mov.w	#16,r0
 		mov.w	r0,@rt_sec_init
-		
+;
 		mov.b	#48,r0l
 		mov.b	r0l,@current_sample_size
 		mov.b	#1,r0l
 		mov.b	r0l,@current_sample_number
 		mov.b	#0,r0l
 		mov.b	r0l,@current_Threshold
-;		
-;       Set up for 4800 baud @ 19.6608 MHz (page 194, table 9-3)
 ;
-                mov.b   #BIT_RATE_4800,r0l
+;       Set up for 19200 baud @ 19.6608 MHz (page 194, table 9-3)
+;
+                mov.b   #BIT_RATE_19200,r0l
                 mov.b   r0l,@s0_bit_rate_reg
-                mov.b   r0l,@serial_rate
+;
                 mov.b   #00,r0l				; serial_mode_val
                 mov.b   r0l,@s0_serial_mode_reg
                 mov.b   #h'30,r0l
@@ -1159,7 +1175,7 @@ Init_stuff:
 ;
                 mov.b   #BIT_RATE_4800,r0l
                 mov.b   r0l,@s1_bit_rate_reg
-                mov.b	r0l,@serial_rate1
+;
                 mov.b   #00,r0l				; serial_mode_val
                 mov.b   r0l,@s1_serial_mode_reg		; 8 bit Data
                 mov.b   #h'30,r0l
@@ -1494,6 +1510,10 @@ init_data_pointer_check_done:
                 jsr     set_antenna_configuration
                 mov.w	#6,r0			; setup next time
 		mov.w	r0,@rt_msec_lcd
+                mov.b	@serial_rate,r0l
+                mov.b   r0l,@s0_bit_rate_reg
+                mov.b	@serial_rate1,r0l
+                mov.b   r0l,@s1_bit_rate_reg                		
 
                 
 
@@ -1637,6 +1657,9 @@ no_sec_change:                                                  ; Idle Loop
 ant_1_ok:							; Idle Loop
                 mov.b   #0,r1L          ; Reset flag            ; Idle Loop
                 mov.b   r1L,@ant_one_flag                       ; Idle Loop
+                inc	r1l					; Idle Loop
+                mov.b	r1l,@comm0_A1_flag			; Idle Loop
+                mov.b	r1l,@comm1_A1_flag			; Idle Loop
                 jsr     qsync_bucket_in                         ; Idle Loop
                                                                 ; Idle Loop
                 jsr     process_filters                         ; Idle Loop
@@ -1756,8 +1779,11 @@ fence_process_start:
 ;	    FF
 ;
 P_lcd:
+		mov.b	@ctrl_byte_LCD,r0l
+		beq	LCD_off
 		mov.w	@rt_msec_lcd,r0
 		beq	p_lcd_run
+LCD_off:		
 		rts
 p_lcd_run:		
 		mov.w	#60,r0			; setup next time
@@ -1935,6 +1961,7 @@ serin_process:
                 mov.w   #inp_buf,r0
                 mov.b   @inp_len,r1l
                 mov.b   #0,r1h
+                mov.b	r1h,@rawon_flag			; Turn off raw DD 
                 add.w   r1,r0				; Pointer to inbuf
                 mov.b   @s0_recv_data,r2l		; get char
                 and     #h'7f,r2l			; remove parity
@@ -2898,17 +2925,43 @@ p_serial_output:
 
 ;       Only going to send characters if there any to send
 ;       and the output uart is ready.
-
+;
+		btst    #tx_ready_bit,@s0_serial_status_reg
+                beq     p_serial_out_exit
+;
+		mov.b	@rawon_flag,r1l
+		beq	comm0_buffer_out
+;
+                mov.b	@comm0_A1_flag,r1l
+                beq	comm_0_exit		; no new data
+                mov.b	#0,r1l
+                mov.b	r1l,@comm0_A1_flag
+                mov.b	@comm0_DD_count,r0h
+                mov.b	@comm0_last_Q,r0l
+                jsr	get_raw_Q
+                mov.b	r0h,@comm0_DD_count	; restore DD Count
+                cmp.b	#h'0ef,r0l
+                bls	comm0_not_Q
+                mov.b	r0l,r0h
+		and	#h'0f,r0h		; Get Q
+		mov.b	r0h,@comm0_last_Q
+comm0_not_Q:					                
+;
+		mov.b   r0l,@s0_tx_data		; Send it
+		bclr    #tx_ready_bit,@s0_serial_status_reg
+comm_0_exit:		
+		rts
+;		
+comm0_buffer_out:
                 mov.w   @output_buffer_in_ptr,r1
                 mov.w   @output_buffer_out_ptr,r0
                 cmp.w   r0,r1
                 bne     p_serial_out_send_a_char
-                rts
-
+                bra     p_serial_out_exit
+;
 p_serial_out_send_a_char:
 
-                btst    #tx_ready_bit,@s0_serial_status_reg
-                beq     p_serial_out_exit
+                
 
 ;       Have a character, the UART is ready, let's do it.
 
@@ -3106,10 +3159,7 @@ Not_GPRMC:
 ;----------------------------------------------------------
 ;
 gps_bearing_2_dd:
-;                mov.b   #1,r0L
-;                mov.b   r0L,@ctrl_byte_GPS_compass_avail
-;       If we ever get a gps set compass ok             
-
+;            
 ;       Since there is a compass, convert the heading to
 ;       doppler degrees (200 dd / 360 deg, or 5 dd/ 9 deg)
 
@@ -3157,6 +3207,9 @@ serin_no_rollover:
 ; ---------------------------------------------------------
 p_serial_output2:
 ;
+; comm1 is turned on by -g option
+; 	      GPS_echo_flag = 0
+;
 ;	Check Opt -G if False send Bearing info in 1 byte DD
 ;	If the UART is ready to send
 ;	Send Q when it changes.  
@@ -3165,89 +3218,51 @@ p_serial_output2:
 ;		          Hardware limit
 ;     ELSE
 ;	Echo GPS string + decimal Bearing and Q
-
-;       Only going to send characters if there any to send
-;       and the output uart is ready.
 ;
-;     If send DD-Q
+;----------------------------------------------------------
 ;
-;	Qcount = 0
-;	Yes	No
-;	|	|
-;	|	|
-;	|	Q = LastQ ----
-;	|	No	      Yes
-;	| 	|		|
-;	|	| 		|
-;	|    Qcount = 1 	|
-;	|    No	      Yes	|
-;	|    |		|	|
-;	|    |		|	|
-;	Send Q		| ______/
-;	|	  	|/
-;	Qcount=0	Send DD
-; 	\______________ |
-;		       \|
-;			inc Qcount
-;
-		mov.b	@GPS_echo_flag,r1l
-		bne	p_serial_output2_G
 		btst    #tx_ready_bit,@s1_serial_status_reg
                 beq     p_serial_out2_exit
-;							; Start of Q or DD
-;							; send logic                
-                mov.b	@Q_count,r2h
-                beq	p_serial_output2_Q		; Yes: Send Q
-                mov.b	@last_sent_Q,r1h
-                mov.b	@doppler_qual_0T9,r1l
-                cmp.b	r1l,r1h				; same?
-                beq	p_serial_output2_Bearing	; Yes
-                cmp.b	#1,r2h				; Qcount = 1?
-                beq	p_serial_output2_Bearing
-                
-p_serial_output2_Q:
-                mov.b	#0,r2h
-                mov.b	r1l,@last_sent_Q
-                or	#h'0f0,r1l			; Format h'FQ
-                bra	p_serial_output2_Byte
+;                
+;	We can send a char if we have one
+;                
+                mov.b	@GPS_echo_flag,r1l	; if set then GPS+Bearing+Q
+                bne	comm1_GPS_BQ
+;                
+                mov.b	@comm1_A1_flag,r1l
+                beq	p_serial_out2_exit	; no new data
+                mov.b	#0,r1l
+                mov.b	r1l,@comm1_A1_flag 
+                mov.b	@comm1_DD_count,r0h
+                mov.b	@comm1_last_Q,r0l
+                jsr	get_raw_Q
+                mov.b	r0h,@comm1_DD_count	; restore DD Count
+                cmp.b	#h'0ef,r0l
+                bls	comm1_not_Q
+                mov.b	r0l,r0h
+		and	#h'0f,r0h		; Get Q
+		mov.b	r0h,@comm1_last_Q
+comm1_not_Q:
+		mov.b	r0l,@s1_tx_data		; Send it
+		bclr    #tx_ready_bit,@s1_serial_status_reg
+		bra	p_serial_out2_exit                
 ;
-p_serial_output2_Bearing:
-                mov.b	@qsync_bearing,r1l		; DD Bearing
-p_serial_output2_Byte:                
-                mov.b   r1l,@s1_tx_data			; Send it
-;
-;       Take care of ready bit and xmitter data empty
-;
-                bclr    #tx_ready_bit,@s1_serial_status_reg
-                inc	r2h
-                mov.b	r2h,@Q_count
-                rts
-;		
-p_serial_output2_G
-
+comm1_GPS_BQ:                
                 mov.w   @output_buffer2_in_ptr,r1
                 mov.w   @output_buffer2_out_ptr,r0
                 cmp.w   r0,r1
-                bne     p_serial_out2_send_a_char
-                rts
-
+                beq	p_serial_out2_exit	; nothing to send
 p_serial_out2_send_a_char:
-
-                btst    #tx_ready_bit,@s1_serial_status_reg
-                beq     p_serial_out2_exit
-
-;       Have a character, the UART is ready, let's do it.
-
                 mov.b   @r0,R1l
                 adds    #1,r0			; inc ptr
                 mov.b   r1l,@s1_tx_data		; Send it
-
+;
 ;       Take care of ready bit and xmitter data empty
-
+;
                 bclr    #tx_ready_bit,@s1_serial_status_reg
-
+;
 ;       Check for the end of buffer 
-
+;
                 mov.w   #output_buffer2_end,r1
                 cmp.w   r0,r1
                 bne     p_serial_out2_save
@@ -3255,9 +3270,68 @@ p_serial_out2_send_a_char:
 ;
 p_serial_out2_save:
                 mov.w   r0,@output_buffer2_out_ptr
-;
+;                
 p_serial_out2_exit:
                 rts
+;
+;
+;----------------------------------------------------------
+;
+; Subroutine get_raw_q
+; Input
+;	r0h DD Count
+;	r0l Last Q
+; Return
+;	r0h DD Count
+;	r0l Output byte 0-C7 for DD or FQ
+;	On ret need to test for FQ and update last Q
+;	and restore DD_Count
+;
+;	DD_Count = 0
+;	Yes	No
+;	|	|
+;	|	|
+;	|	Q = LastQ ----
+;	|	No	      Yes
+;	| 	|		|
+;	|	| 		|
+;	|    DD_Count = 1 	|
+;	|    No	       Yes	|
+;	|    |		|	|
+;	|    |		|	|
+;	ret Q		| ______/
+;	|	  	|/
+;   DD_Count=0	    rtn DD
+; 	\______________ |
+;		       \|
+;		inc DD_Count
+;		  	|
+;		       rtn
+;
+get_raw_q:
+		mov.b	r0h,r0h				; DD count = 0?
+		beq	get_dd_ret_q
+;
+get_dd_test_q:
+		mov.b	@doppler_qual_0T9,r1l
+		cmp.b	r0l,r1l
+		beq	get_dd_ret_dd			; Q = Last Q
+		cmp.b	#1,r0h				; DD Count != 1
+		bne	get_dd_ret_dd
+;
+get_dd_ret_q:		
+		mov.b	@doppler_qual_0T9,r0l
+		or	#h'0f0,r0l			; Format h'FQ
+		mov.b	#0,r0h
+		bra	get_dd_inc_exit				
+;
+get_dd_ret_dd:	
+		mov.b	@qsync_bearing,r0l		; DD Bearing
+							; fall thru to 
+							; get_dd_inc_exit
+get_dd_inc_exit:
+		inc	r0h
+		rts
 ;
 ; ---------------------------------------------------------
 ;
@@ -6197,6 +6271,10 @@ Display_8LED:
 ;		LED8_iner_odd	= 46
 ;		LED8_iner_even  = 35	
 ;
+		mov.b   @ctrl_byte_multi_display,r0l
+		bne	do_LED8
+		rts
+do_LED8:		
 		mov.b	@LED8_out_RED,r0l	; Display 1
 		jsr	DD_to_LED
 						; if 07
@@ -8198,6 +8276,7 @@ cmd_baud:
                 jsr	cmd_baud_set
 
                 mov.b	r0l,@serial_rate1
+		mov.b	r0l,@s1_bit_rate_reg	; set baud now                
                 bne     cmd_baud_show
                 rts
 cmd_baud_set:
@@ -8357,6 +8436,19 @@ cmd_baud2_set_192:
 cmd_baud2_set_done:                              ; XXXX Error
 ;       rts
 ;----------------------------------------------------------
+;
+;----------------------------------------------------------
+;
+; RAWON
+; Turn on raw DD data to serial port 1
+; Auto turn off on any char from external device
+;
+;----------------------------------------------------------
+;
+cmd_rawon:
+		mov.b	#1,r1l
+		mov.b	r1l,@rawon_flag
+		rts
 ;
 ; Print, or set the button configuration.
 ;       btab [B# F#] | -
@@ -9302,21 +9394,30 @@ cmd_cw_doit:
 ; ---------------------------------------------------------
 
 ;       Add or remove options for the MicroFinder.
-;               +t      use startup tones for error state
-;               -t      do not use startup tones for error state
-;               +k      make key click for buttons
-;               -k      do not use key click
-;               +p      pointer and dial work
-;               -p      no pointer and stepper, turn off processes.
+;
+;		+b	Add Doppler bearing to GPS
+;
+		+d	dim LEDS
+;
 ;               +g      Auto GPS stream echo + Bearing and Q 1 per Sec
 ;               -g      Byte Bearing  0 to 199   Byte Q  h'FQ on change
-;               +0      Use old format of bearing for APRS compat
-;               -0      Do not use old APRS format
-
+;
+;               +k      make key click for buttons
+;
+;		+l	LCD dispay on
+;
+;		+m	mult display on
+;
+;               +p      pointer and dial work
+;
+;               +0      Use old format of bearing for APRS compat DELEATED
+;
+;               +t      use startup tones for error state
+;
 ;       Register use
 ;               r2l     ==0, remove ==1, add
 ;               r2h     option letter code
-
+;
 cmd_opt:
                 mov.w   #inp_buf,r1
                 jsr     cmd_skip_token
@@ -9330,25 +9431,92 @@ cmd_opt_do:
                 bne     cmd_opt_false_flag
 
                 mov.b   #01,r2l			; Make True
+;
+						; Now have + or - [true or false]                
 cmd_opt_false_flag:                
                 adds    #1,r1			; Next Char
                 mov.b   @r1,r0l
                 bclr    #5,r0l			; Convert to upper case
+                				; Now have the letter
+;
+
+
+;                mov.b   r2L,@ctrl_byte_CHECK_ANTENNA
+             				
 ;
 cmd_opt_check_B:
-		cmp.b   #  'B'  ,r0l		; Doppler bearing
+		cmp.b   #  'B'  ,r0l		; Add Doppler bearing to GPS
+                bne     cmd_opt_check_D
+                mov.b   r2l,@bearing_print_flag
+;
+                bra     cmd_opt_exit
+;                
+cmd_opt_check_D:
+                cmp.b   #  'D'  ,r0l		; Dim light mode
+                bne     cmd_opt_check_G
+
+                mov.b   r2L,@ctrl_byte_Dim_LED
+;                
+                bra     cmd_opt_exit                
+;
+cmd_opt_check_G:
+                cmp.b   #  'G'  ,r0l		; GPS Streaming mode
+                bne     cmd_opt_check_k
+;                
+                mov.b   r2l,@GPS_echo_flag
+;                
+                bra     cmd_opt_exit
+;                
+cmd_opt_check_K:
+                cmp.b   #  'K'  ,r0l		; Button click feedback
+                bne     cmd_opt_check_L
+;                
+                mov.b   r2L,@ctrl_byte_Button_click
+;
+                bra     cmd_opt_exit
+;
+cmd_opt_check_L:
+                cmp.b   #  'L'  ,r0l		; LCD display
+                bne     cmd_opt_check_M
+;                
+                mov.b   r2L,@ctrl_byte_LCD
+;
+                bra     cmd_opt_exit
+;
+cmd_opt_check_M:
+                cmp.b   #  'M'  ,r0l		; Multi display
+                bne     cmd_opt_check_P
+;                
+                mov.b   r2L,@ctrl_byte_multi_display
+;
+                bra     cmd_opt_exit
+;
+cmd_opt_check_P:
+                cmp.b   #  'P'  ,r0l		; Pointer availability
                 bne     cmd_opt_check_T
                 cmp.b   #0,r2l
-		bne     cmd_opt_add_bearing
-cmd_opt_remove_bearing:
-                mov.b   #0,r4L
-                mov.b   r4L,@bearing_print_flag
-                jmp     cmd_opt_exit
-cmd_opt_add_bearing:
-                mov.b   #1,r4L
-                mov.b   r4L,@bearing_print_flag
-                jmp     cmd_opt_exit
-
+                bne     cmd_opt_add_pointer
+cmd_opt_remove_pointer:
+                mov.b   r2L,@ctrl_byte_Pointer_avail
+                mov.b   #PROCESS_STOPPED,r0l
+                mov.b   r0l,@ps_dial_out
+                mov.b   r0l,@ps_stepper_driver
+                bra     cmd_opt_exit
+cmd_opt_add_pointer:
+                mov.b   r2L,@ctrl_byte_Pointer_avail
+                mov.b   #PROCESS_RUNNING,r0l
+                mov.b   r0l,@ps_dial_out
+                mov.b   r0l,@ps_stepper_driver
+                bra     cmd_opt_exit
+;
+cmd_opt_check_T:
+                cmp.b   #  'T'  ,r0l		; Startup tone option
+                bne     cmd_opt_exit
+;
+                mov.b   r2L,@ctrl_byte_Start_tone
+                ;
+                bra     cmd_opt_exit
+;
 ;;       OPTION Old APRS Compatibility
 ;
 ;cmd_opt_check3:
@@ -9365,204 +9533,58 @@ cmd_opt_add_bearing:
 ;                mov.b   r4L,@ctrl_byte_Old_APRS_compat
 ;                jmp     cmd_opt_exit
 ;
-cmd_opt_check_T:
-                cmp.b   #  'T'  ,r0l		; Startup tone option
-                bne     cmd_opt_check_K
-                cmp.b   #0,r2l
-                bne     cmd_opt_add_tone
-cmd_opt_remove_tone:
-
-                mov.b   #0,r4L
-                mov.b   r4L,@ctrl_byte_Start_tone
-                jmp     cmd_opt_exit
-cmd_opt_add_tone:
-
-                mov.b   #1,r4L
-                mov.b   r4L,@ctrl_byte_Start_tone
-                jmp     cmd_opt_exit
-;                
-cmd_opt_check_K:
-                cmp.b   #  'K'  ,r0l		; Button click feedback
-                bne     cmd_opt_check_P
-                cmp.b   #0,r2l
-                bne     cmd_opt_add_click
-cmd_opt_remove_click:
-                mov.b   #0,r4L
-                mov.b   r4L,@ctrl_byte_Button_click
-                bra     cmd_opt_exit
-cmd_opt_add_click:
-                mov.b   #1,r4L
-                mov.b   r4L,@ctrl_byte_Button_click
-                bra     cmd_opt_exit
-;
-cmd_opt_check_P:
-                cmp.b   #  'P'  ,r0l		; Pointer availability
-                bne     cmd_opt_check_G
-                cmp.b   #0,r2l
-                bne     cmd_opt_add_pointer
-cmd_opt_remove_pointer:
-                mov.b   #0,r4L
-                mov.b   r4L,@ctrl_byte_Pointer_avail
-                mov.b   #PROCESS_STOPPED,r0l
-                mov.b   r0l,@ps_dial_out
-                mov.b   r0l,@ps_stepper_driver
-                bra     cmd_opt_exit
-cmd_opt_add_pointer:
-                mov.b   #1,r4L
-                mov.b   r4L,@ctrl_byte_Pointer_avail
-                mov.b   #PROCESS_RUNNING,r0l
-                mov.b   r0l,@ps_dial_out
-                mov.b   r0l,@ps_stepper_driver
-                bra     cmd_opt_exit
-;
-cmd_opt_check_G:
-                cmp.b   #  'G'  ,r0l		; GPS Streaming mode
-                bne     cmd_opt_check_D
-                cmp.b   #0,r2l
-                bne     cmd_opt_add_gps
-cmd_opt_remove_gps:
-                mov.b   #0,r4L			; False
-                mov.b   r4L,@GPS_echo_flag
-                bra     cmd_opt_exit
-cmd_opt_add_gps:
-                mov.b   #1,r4L			; True
-                mov.b   r4L,@GPS_echo_flag
-                bra     cmd_opt_exit
-;
-cmd_opt_check_D:
-                cmp.b   #  'D'  ,r0l		; Dim light mode
-                bne     cmd_opt_check_A
-                cmp.b   #0,r2l
-                bne     cmd_opt_add_dim
-cmd_opt_remove_dim:
-                mov.b   #1,r4L
-                mov.b   r4L,@ctrl_byte_Dim_LED
-                bra     cmd_opt_exit
-cmd_opt_add_dim:
-                mov.b   #1,r4L
-                mov.b   r4L,@ctrl_byte_Dim_LED
-                bra     cmd_opt_exit
-
-;       Turn off antenna checker
-
-cmd_opt_check_A:
-                cmp.b   #  'A'  ,r0l
-                bne     cmd_opt_abort
-                cmp.b   #0,r2l
-                bne     cmd_opt_add_check
-cmd_opt_remove_check:
-                mov.b   #0,r4l
-                mov.b   r4L,@ctrl_byte_CHECK_ANTENNA
-                bra     cmd_opt_exit
-cmd_opt_add_check:
-                mov.b   #1,r4L
-                mov.b   r4L,@ctrl_byte_CHECK_ANTENNA
-                bra     cmd_opt_exit
-;
 cmd_opt_exit:
-cmd_opt_abort:
 cmd_opt_show:
 ;
-                mov.b   @ctrl_byte_CHECK_ANTENNA,r4L	; Show Antenna Checker
-                bne     cmd_show_no_check
-cmd_show_check:
-                mov.b   #  '+'  ,r1l
-                bra     cmd_show_write_check
-cmd_show_no_check:
-                mov.b   #  '-'  ,r1l
-cmd_show_write_check:
-                jsr     @@write_buffered_char
-                mov.w   #str_antenna_checker,r1
-                jsr     @@writeln_buffered_str
-;
-                mov.b   @ctrl_byte_Dim_LED,r4L		; Show DIM LED MODE
-                beq     cmd_show_no_dim_led
-cmd_show_dim_led:
-                mov.b   #  '+'  ,r1l
-                bra     cmd_show_write_dim
-cmd_show_no_dim_led:
-                mov.b   #  '-'  ,r1l
-cmd_show_write_dim:
-                jsr     @@write_buffered_char
+		mov.b	@bearing_print_flag,r1l		; bearing + GPS
+		jsr	show_opt_on_off
+		mov.w   #str_bearing_print,r1
+		jsr     @@writeln_buffered_str
+		
+                mov.b   @ctrl_byte_Dim_LED,r1L		; dim LED
+                jsr	show_opt_on_off
                 mov.w   #str_dim_led,r1
                 jsr     @@writeln_buffered_str
-;
-                mov.b   @GPS_echo_flag,r4L		; Show GPS Streaming
-                beq     cmd_show_Byte_bearing_Q
-cmd_show_gps:
+                
+                mov.b   @GPS_echo_flag,r1L		; GPS or raw
+                jsr	show_opt_on_off
                 mov.w   #str_GPSs,r1
                 jsr     @@writeln_buffered_str
-                bra     cmd_show_bearing_flag
-cmd_show_Byte_bearing_Q:
-                mov.w   #str_B_Q,r1
-                jsr     @@writeln_buffered_str
+                
+                mov.b   @ctrl_byte_Button_click,r1L	; button click [k]
+                jsr	show_opt_on_off
+		mov.w	#str_button_click,r1
+                jsr     @@writeln_buffered_str                                
 ;                
-cmd_show_bearing_flag:
-                mov.b   @Bearing_print_flag,r4L
-                beq     cmd_show_no_bearing
-cmd_show_bearing:
-                mov.b   #  '+'  ,r1l
-                bra     cmd_show_write_bearing
-cmd_show_no_bearing:
-                mov.b   #  '-'  ,r1l
-cmd_show_write_bearing:
-                jsr     @@write_buffered_char
-                mov.w   #str_bearing_print,r1
+		mov.b	@ctrl_byte_LCD,r1l		; LCD display
+		jsr	show_opt_on_off
+		mov.w	#str_LCD,r1
+		jsr     @@writeln_buffered_str
+		
+                mov.b   @ctrl_byte_multi_display,r1L	; multi_display 
+                jsr	show_opt_on_off
+                mov.w   #str_multi_display,r1
                 jsr     @@writeln_buffered_str
-;                
-                mov.b   @ctrl_byte_Start_tone,r3H	; Show startup tone
-                beq     cmd_show_no_tone
-cmd_show_tone:
-                mov.b   #  '+'  ,r1l
-                bra     cmd_show_write_tone
-cmd_show_no_tone:
-                mov.b   #  '-'  ,r1l
-cmd_show_write_tone:
-                jsr     @@write_buffered_char
-                mov.w   #str_start_tone,r1
-                jsr     @@writeln_buffered_str
-
-;       Show Button Click
-
-                mov.b   @ctrl_byte_Button_click,r3H
-                beq     cmd_show_no_click
-cmd_show_click:
-                mov.b   #  '+'  ,r1l
-                bra     cmd_show_write_click
-cmd_show_no_click:
-                mov.b   #  '-'  ,r1l
-cmd_show_write_click:
-                jsr     @@write_buffered_char
-                mov.w   #str_button_click,r1
-                jsr     @@writeln_buffered_str
-
-;       Show pointer avail
-
-                mov.b   @ctrl_byte_Pointer_avail,r4L
-                beq     cmd_show_no_pointer
-cmd_show_pointer:
-                mov.b   #  '+'  ,r1l
-                bra     cmd_show_write_pointer
-cmd_show_no_pointer:
-                mov.b   #  '-'  ,r1l
-cmd_show_write_pointer:
-                jsr     @@write_buffered_char
+                
+                mov.b   @ctrl_byte_Pointer_avail,r1l	; pointer
+                jsr	show_opt_on_off
                 mov.w   #str_pointer,r1
                 jsr     @@writeln_buffered_str
+                
+                mov.b   @ctrl_byte_Start_tone,r1L	; tone
+                jsr	show_opt_on_off
+                mov.w   #str_start_tone,r1
+                jmp     @@writeln_buffered_str
 ;
-;       Show old APRS Compat
-
-                mov.b   @ctrl_byte_Old_APRS_compat,r3H
-                beq     cmd_show_exit
-cmd_show_compa:
+show_opt_on_off:
+		beq	show_opt_off
                 mov.b   #  '+'  ,r1l
-                jsr     @@write_buffered_char
-                mov.w   #str_compat,r1
-                jsr     @@writeln_buffered_str
-
-cmd_show_exit:
-                rts
-
+                bra     show_opt_on_off_exit
+show_opt_off:
+                mov.b   #  '-'  ,r1l
+show_opt_on_off_exit:                
+                jmp     @@write_buffered_char
+;                                
 ;       Light leds in the ring using the value 0..200.
 ;       Mainly for testing
 ;       This command turns off the LED ring display
@@ -10151,8 +10173,8 @@ rotation_table:
                 .data.b 22      ; 5     534
                 .data.b 18      ; 6     647
                 .data.b 15      ; 7     768
-                .data.b 12      ; 8     946
-                .data.b 10      ; 9    1118
+                .data.b 13      ; 8     910
+                .data.b 12      ; 9     946
 ;
 
 ;       Antenna switching state machines.
@@ -10908,6 +10930,10 @@ cli_cmd_table:
                 .data.w cmd_str_ps
                 .data.w cmd_ps
                 .data.w cmd_help_ps
+                
+                .data.w cmd_str_rawon
+                .data.w cmd_rawon
+                .data.w cmd_help_rawon                
 
                 .data.w cmd_str_readb
                 .data.w cmd_read_byte
@@ -11064,8 +11090,8 @@ welcome_str:
  .sdata  "*                               *\n\r"
  .sdata  "*       AHHA! Solutions         *\n\r"
  .sdata  "*   KE6GDD KE6GDH KN6FW KN6ZT   *\n\r"
- .sdata  "*                               *\n\r"
- .sdata  "*  Version FW1.3    2014-01-28  *\n\r"
+ .sdata  "*           SN F001             *\n\r"
+ .sdata  "*  Version FW1.5    2014-02-23  *\n\r"
  .sdataz "*********************************\n\r"
 ;
 str_lcd_line1:
@@ -11089,27 +11115,26 @@ line_feed:      .data.b  LF
                 .data.b  0
 
 ;       Option descriptors
-str_antenna_checker:
-                .sdataz "a / Antenna check"
+;
+str_bearing_print:
+                .sdataz "b / Bearing print"
 str_dim_led:
                 .sdataz "d / Dim LED"
 str_GPSs:
-                .sdataz "+g / GPS + Bearing Q"
-str_B_Q:
-                .sdataz "-g / Byte Bearing and Q"
-str_bearing_print:
-                .sdataz "b / Bearing print"
-str_start_tone:
-                .sdataz "t / Startup tone"
-str_compat:
-                .sdataz "0 / Old APRS compat"
-str_pointer:
-                .sdataz "p / Pointer"
+                .sdataz "g / +GPS + Bearing Q or - Byte Bearing and Q"
 str_button_click:
                 .sdataz "k / Button click"
-
+str_LCD:
+                .sdataz "l / LCD display"                
+str_multi_display:
+                .sdataz "m / Multi display"
+str_pointer:
+                .sdataz "p / Pointer"
+str_start_tone:
+                .sdataz "t / Startup tone"                                
+;                                
 ;       MicroFinder can parse these
-
+;
 str_gprmc_parse:
                 .sdataz "$gprmc"
 ;
@@ -11585,7 +11610,7 @@ cmd_help_asw:
 cmd_str_baud:
                         .sdataz "ba*ud"
 cmd_help_baud:
-                        .sdataz "Ubaud      [12|24|48|96] Set or show serial baud rate"
+                        .sdataz "Ubaud      [][48|96|192]Set or show serial baud rates"
 cmd_str_bearing:
                         .sdataz "be*aring"
 cmd_help_bearing:
@@ -11626,6 +11651,10 @@ cmd_str_multd:
                         .sdataz "mu*ltd"                        
 cmd_str_mycall:
                         .sdataz "my*call"
+cmd_str_rawon:
+                        .sdataz "rawon"
+cmd_help_rawon:
+                        .sdataz "Urawon                  Send raw DD to control port"                                                
 cmd_str_reset:
                         .sdataz "reset"
 cmd_help_reset:
@@ -12038,8 +12067,8 @@ FUNC_CUST_4:                    .EQU	h'74
                 .data.b 0       ; calibrate rot rate 9
                 .data.b 0       ; default rotation rate
         %IF KN6FW
-                .sdataz "WB6YRU >"       ; str_prompt
-;                .data.b 0
+                .sdataz "KN6FW >"       ; str_prompt
+                .data.b 0
                 .data.b 0 
  
         %ELSE 
@@ -12078,7 +12107,7 @@ FUNC_CUST_4:                    .EQU	h'74
                 .data.b BIT_RATE_4800   ; serial_rate1
                                 
 
-                .data.b BIT_RATE_4800   ; serial_rate
+                .data.b BIT_RATE_19200  ; serial_rate
                 .data.b 0               ; snooper_qlevel
 
                 .data.b 244             ; antenna_voltage_too_high_d244
@@ -12122,6 +12151,9 @@ FUNC_CUST_4:                    .EQU	h'74
 ;
                 .data.b 0               ; ctrl_byte_Dim_LED:
                 .data.b 0               ; ctrl_byte_BEARING_FORCE_SNOOP:
+;
+		.data.b 0               ; ctrl_byte_multi_display
+		.data.b 0               ; ctrl_byte_LCD               
 ;
 		.res.b  1		; bearing_print_flag:
 					; Which of the 4 LED  
@@ -12481,6 +12513,9 @@ LED_abs_flag:                   .res.b  1
 
 ctrl_byte_Dim_LED:              .res.b  1
 ctrl_byte_BEARING_FORCE_SNOOP:  .res.b  1
+;
+ctrl_byte_multi_display:	.res.b  1
+ctrl_byte_LCD:			.res.b  1
 
 bearing_print_flag:             .res.b  1
 LED8_out_RED:			.res.b  1	; Which filter  
@@ -12671,8 +12706,7 @@ ant_one_flag:                   .res.b  1
 test_flag:                      .res.b  1
 GPRMC_string_flag:		.res.b	1
 GPRMC_Find_flag:		.res.b	1
-last_sent_Q:			.res.b	1
-Q_count:			.res.b	1
+
 filter_rot			.res.b	1
 				.res.b  1
 ;
@@ -12680,7 +12714,17 @@ LED8_out_odd:			.res.b	1
 LED8_out_even:			.res.b	1
 LED8_iner_odd:			.res.b	1
 LED8_iner_even:			.res.b	1
+
 FlipFlop:			.res.b  1
+rawon_flag:			.res.b  1
+
+comm0_A1_flag:			.res.b  1
+comm1_A1_flag:			.res.b  1
+
+comm0_last_Q:			.res.b	1
+comm0_DD_count:			.res.b	1
+comm1_last_Q:			.res.b	1
+comm1_DD_count:			.res.b	1				
 				
 ;       Queue filtering.
 
